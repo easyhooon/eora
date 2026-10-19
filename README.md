@@ -1,2 +1,80 @@
-# android-qa-kit
-Planning a customizable Android staging QA evidence library. Design and feature documentation; implementation not yet available.
+# Eora
+
+**어라? 하고 발견한 문제를, 재현 가능한 제보로.**
+
+**Eora** (어라) comes from a Korean interjection used when you notice something unexpected.
+
+STG Android 앱에서 문제 화면과 재현 정보를 모아, 검토한 뒤 이슈 트래커에 전달하기 위한 **커스터마이징 가능한 QA 라이브러리 구상**입니다.
+
+> 현재 상태: 기능·아키텍처·개발 순서를 정리한 설계 저장소입니다. Android 라이브러리, 샘플 앱, 서버, 배포된 SDK 아티팩트는 아직 없습니다. 아래 내용은 구현 완료 또는 확정된 API를 뜻하지 않습니다.
+
+## 해결하려는 문제
+
+QA 중 화면을 캡처하고, 문제 위치를 표시하고, 기기·앱 버전을 적은 뒤 Jira 티켓에 첨부하는 작업은 여러 앱을 오가게 됩니다. 이 과정을 STG 앱 안의 짧은 흐름으로 연결하고, 개발자가 재현에 필요한 맥락을 함께 받도록 하는 것이 목표입니다.
+
+## 제안하는 사용 흐름
+
+1. STG 앱에서 문제를 발견하면 기기를 흔든다(shake-to-open).
+2. 제보 UI가 뜨기 전 원래 화면을 캡처하고, 편집기에서 원·화살표·텍스트로 문제 위치를 표시한다.
+3. 민감한 영역을 불투명하게 가리고, 필요한 경우 이미 녹화한 영상을 선택한다.
+4. 앱 버전, OS, 기기 모델, 안전하게 가공된 화면 식별자와 재현 설명을 확인한다.
+5. 기존 Jira 티켓을 선택하고 첨부 내용·대상을 최종 검토한다.
+6. 사용자가 업로드를 눌렀을 때만 전송하고, 파일별 성공 여부를 확인한다.
+
+Jira 연동은 **기존 티켓에 첨부를 추가**하는 방식입니다. 첨부 파일을 같은 이름으로 덮어쓰는 upsert를 제공한다고 가정하지 않습니다.
+
+## MVP 범위
+
+- 상시 떠 있는 UI 없이 STG에서 shake-to-open, 제보 UI 표시 전 화면 캡처
+- foreground 생명주기 제어, 감도·쿨다운 설정, 수동 호출 대체 경로
+- 이미지 주석: 원, 화살표, 텍스트, 실행 취소
+- 불투명 가림 처리와 최종 결과 미리보기
+- 허용 목록 기반의 최소 재현 메타데이터
+- 기존 이미지·영상 선택, 크기 제한, 로컬 임시 보관
+- 사용자 확인 후 기존 이슈에 첨부하는 교체 가능한 업로더
+- 재시도 시 같은 보고서를 식별하고 부분 업로드를 복구하는 설계
+
+사용자가 쓰는 MVP는 앱 안에서 기존 Jira 티켓에 직접 첨부하는 흐름까지 포함합니다. 로컬 파일 내보내기는 개발 검증용 PoC일 뿐 사용 가능한 MVP로 취급하지 않습니다. QA 담당자에게 파일 이동이나 CLI 사용을 요구하지 않습니다. 인증 방식이 정해지기 전에는 Jira 연동 완료 일정을 약속하지 않으며, 앱 내 영상 녹화는 후속 범위입니다.
+
+## 커스터마이징 방향
+
+진입 트리거, 캡처 방식, 메타데이터 제공자, 가림 처리, 이슈 업로더를 교체 가능한 경계로 설계합니다. Jira 외의 트래커도 연결할 수 있는 구조를 목표로 하되, 첫 사용자 흐름은 앱 안에서 Jira 직접 첨부입니다. 아직 공개 API 서명이나 모듈 이름은 확정하지 않았습니다.
+
+## 화면을 가리지 않는 진입
+
+shake는 STG 호스트 앱이 foreground일 때만 감지합니다. 감지되면 원래 화면을 먼저 캡처한 뒤 제보 UI를 열며, 이미 제보 중이면 중복 호출을 무시합니다. 센서가 없거나 흔들기 어려운 경우 호스트의 수동 호출 경로를 사용합니다. shake는 촬영할 로컬 초안을 여는 동작이며 녹화·외부 전송 동의가 아닙니다.
+
+[Dari](https://github.com/easyhooon/dari)의 shake 진입과 desktop-only 분리를 참고합니다. Dari를 desktop-only로 설정한 STG에서 Eora가 기기 내 QA 진입을 담당하는 구성이 가능하도록 설계하되, Dari를 필수 의존성으로 두지 않습니다. 연동 호환성은 아직 검증 전입니다.
+
+## 안전한 기본값
+
+- STG 빌드에만 실제 구현을 연결하고, 배포용 변형에는 제거 또는 no-op 구현을 사용합니다.
+- Jira API 토큰·클라이언트 시크릿을 APK에 포함하지 않습니다.
+- 전체 URL, 쿼리 문자열, 쿠키, 인증 헤더, 사용자 입력, 건강 정보 등은 기본 수집하지 않습니다.
+- 화면 식별자는 호스트 앱이 제공한 안전한 값만 허용합니다.
+- STG 데이터도 민감할 수 있으므로 이미지·영상은 별도 검토합니다.
+- 업로드 실패나 네트워크 복구만으로 비공개 자료를 자동 재전송하지 않습니다.
+- 로컬 임시 파일의 보관 기한·용량 상한과 사용자의 삭제 동작을 둡니다.
+
+## 문서
+
+- [기능과 완료 기준](docs/FEATURES.md)
+- [아키텍처와 신뢰 경계](docs/ARCHITECTURE.md)
+- [단계별 로드맵](docs/ROADMAP.md)
+
+## 미결정 사항
+
+최소 Android 버전, 초기 UI 구현 방식, Jira Cloud/Data Center 대상, 사내 인증 방식, 파일 보관 기간·상한, 배포 채널 및 라이선스는 결정 전입니다. 현재 설치 명령이나 Maven 좌표는 제공하지 않습니다.
+
+## 공식 참고 자료
+
+- [Android PixelCopy](https://developer.android.com/reference/android/view/PixelCopy)
+- [Android MediaProjection](https://developer.android.com/media/grow/media-projection)
+- [Android Photo Picker](https://developer.android.com/training/data-storage/shared/photopicker)
+- [Jira Cloud 첨부 API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-attachments/)
+
+문서는 위 API를 설계 검토에 참고합니다. 제품 지원 범위나 실제 기기 호환성을 보증하지 않습니다.
+
+## License
+
+라이선스는 아직 선택하지 않았으며 LICENSE 파일도 추가하지 않았습니다. 공개 저장소라는 사실만으로 별도의 오픈소스 라이선스가 부여된 것으로 간주하지 마세요.
