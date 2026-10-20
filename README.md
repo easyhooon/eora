@@ -6,17 +6,17 @@
 
 STG Android 앱에서 문제 화면과 재현 정보를 모아, 검토한 뒤 이슈 트래커에 전달하기 위한 **커스터마이징 가능한 QA 라이브러리 구상**입니다.
 
-> 현재 상태: 0.1.0 개발자 프리뷰입니다. 실제 Jira 업로더·게이트웨이는 포함하지 않으므로 호스트가 `IssueUploader`를 구현해야 합니다(아래 연동 가이드). 0.x 동안 공개 API가 바뀔 수 있습니다. 결정이 필요한 항목은 [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md)에 있습니다.
+> 현재 상태: 0.2.0 개발자 프리뷰입니다. 실제 Jira 업로더·게이트웨이는 포함하지 않으므로 호스트가 `IssueUploader`를 구현해야 합니다(아래 연동 가이드). 0.x 동안 공개 API가 바뀔 수 있습니다. 결정이 필요한 항목은 [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md)에 있습니다.
 
 ## 설치
 
 ```kotlin
 dependencies {
     // STG(QA) 변형에만 실제 구현, 배포용 변형에는 같은 API의 no-op
-    "stgImplementation"("io.github.easyhooon:eora:0.1.0")
-    "prodImplementation"("io.github.easyhooon:eora-noop:0.1.0")
-    // 선택: 화면 녹화(0.1.0 이후 릴리스부터 제공). 아래 '필요한 권한' 참고
-    // "stgImplementation"("io.github.easyhooon:eora-recording:<version>")
+    "stgImplementation"("io.github.easyhooon:eora:0.2.0")
+    "prodImplementation"("io.github.easyhooon:eora-noop:0.2.0")
+    // 선택: 화면 녹화(0.2.0부터). 아래 '필요한 권한' 참고
+    "stgImplementation"("io.github.easyhooon:eora-recording:0.2.0")
 }
 ```
 
