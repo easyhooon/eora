@@ -6,7 +6,22 @@
 
 STG Android 앱에서 문제 화면과 재현 정보를 모아, 검토한 뒤 이슈 트래커에 전달하기 위한 **커스터마이징 가능한 QA 라이브러리 구상**입니다.
 
-> 현재 상태: 기능·아키텍처·개발 순서를 정리한 설계 저장소입니다. Android 라이브러리, 샘플 앱, 서버, 배포된 SDK 아티팩트는 아직 없습니다. 아래 내용은 구현 완료 또는 확정된 API를 뜻하지 않습니다.
+> 현재 상태: Phase 1(로컬 캡처 PoC) 구현 중입니다. `eora`(STG용 구현), `eora-noop`(release용), `eora-api`(공유 타입), `sample` 모듈이 있습니다. 실제 Jira 업로더·게이트웨이는 인증 방식이 정해지지 않아 아직 없고, 배포된 SDK 아티팩트도 없습니다. 공개 API는 확정 전이며 바뀔 수 있습니다. 결정이 필요한 항목은 [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md)에 있습니다.
+
+## 필요한 권한
+
+- `eora` 라이브러리는 권한을 선언하지 않습니다. 가속도계(shake), `PixelCopy` 캡처, Photo Picker, 앱 전용 저장소는 권한이 필요 없습니다.
+- 호스트 앱은 실제 업로더(게이트웨이 호출)를 연결할 때 `INTERNET`만 선언하면 됩니다.
+- release용 `eora-noop`은 권한·화면·센서·파일 접근이 없습니다. `./gradlew checkReleaseLeak`이 샘플 prodRelease APK에서 이를 검사합니다.
+- 후속 녹화 기능을 넣으면 `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `POST_NOTIFICATIONS`가 추가됩니다(미구현).
+
+## 빌드와 검증
+
+```bash
+./gradlew :eora:testDebugUnitTest checkEoraApiParity checkReleaseLeak
+```
+
+샘플 앱 실행: `./gradlew :sample:installStgDebug` 후 화면을 흔들거나 "Report a problem"을 누릅니다. 데모 이슈 키 `DEMO-1`(성공), `DEMO-2`(응답 유실), `DEMO-3`(영상 거부), `DEMO-403`(권한 없음)으로 상태별 흐름을 볼 수 있습니다.
 
 ## 해결하려는 문제
 
@@ -69,7 +84,8 @@ shake는 STG 호스트 앱이 foreground일 때만 감지합니다. 감지되면
 - [기능과 완료 기준](docs/FEATURES.md)
 - [아키텍처와 신뢰 경계](docs/ARCHITECTURE.md)
 - [단계별 로드맵](docs/ROADMAP.md)
-- [구현 인계와 검증 기준](docs/IMPLEMENTATION_HANDOFF.md)
+- [구현 인계와 검증 기준](docs/IMPLEMENTATION_HANDOFF.md) (저장소에 없음, OPEN_QUESTIONS #1)
+- [미결정 사항과 임시 기본값](docs/OPEN_QUESTIONS.md)
 
 ## 미결정 사항
 

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Toasts from the trigger -->
+    <string name="eora_no_screen">Eora: no screen to capture</string>
+    <string name="eora_screen_changed">Eora: the screen changed before the capture finished. Try again.</string>
+    <string name="eora_screen_protected">Eora: this screen is protected and was not captured.</string>
+    <string name="eora_capture_failed">Eora: could not capture this screen.</string>
+    <string name="eora_too_many_drafts">Eora: %1$d drafts already saved. Delete some in Eora drafts.</string>
+    <string name="eora_storage_full">Eora: draft storage is full. Delete some drafts first.</string>
+
+    <!-- Shake notice -->
+    <string name="eora_notice_title">Shake to report</string>
+    <string name="eora_notice_body">Shaking the device took a screenshot of the screen you were on. It stays on this device until you review it and press Send. Shaking never records video or uploads anything.</string>
+    <string name="eora_ok">OK</string>
+    <string name="eora_turn_off_shake">Turn off shake</string>
+
+    <!-- Drafts -->
+    <string name="eora_drafts_title">Eora drafts</string>
+    <string name="eora_drafts_hint">Drafts stay on this device and are deleted automatically when they expire.</string>
+    <string name="eora_no_drafts">No drafts.</string>
+    <string name="eora_no_issue_yet">No issue yet</string>
+    <string name="eora_close">Close</string>
+
+    <!-- Editor -->
+    <string name="eora_tool_pen">Pen</string>
+    <string name="eora_tool_highlighter">Highlighter</string>
+    <string name="eora_tool_circle">Circle</string>
+    <string name="eora_tool_arrow">Arrow</string>
+    <string name="eora_tool_text">Text</string>
+    <string name="eora_tool_hide">Hide</string>
+    <string name="eora_tool_move">Zoom/Move</string>
+    <string name="eora_undo">Undo</string>
+    <string name="eora_discard">Discard</string>
+    <string name="eora_next">Next</string>
+    <string name="eora_add_text">Add text</string>
+    <string name="eora_add">Add</string>
+    <string name="eora_cancel">Cancel</string>
+
+    <!-- Details -->
+    <string name="eora_describe_title">Describe the problem</string>
+    <string name="eora_steps">Steps to reproduce</string>
+    <string name="eora_expected">Expected</string>
+    <string name="eora_actual">Actual</string>
+    <string name="eora_no_personal_data">Do not type personal data, passwords or tokens.</string>
+    <string name="eora_files">Files</string>
+    <string name="eora_remove">Remove</string>
+    <string name="eora_add_media">Add existing image or video</string>
+    <string name="eora_video_warning">Videos are sent as they are. If one shows personal data, leave it out or edit it elsewhere first.</string>
+    <string name="eora_included_metadata">Included metadata</string>
+    <string name="eora_review">Review</string>
+
+    <!-- Review -->
+    <string name="eora_review_title">Review before sending</string>
+    <string name="eora_destination">Destination: %1$s</string>
+    <string name="eora_issue_key">Existing issue key</string>
+    <string name="eora_find">Find</string>
+    <string name="eora_project">Project: %1$s</string>
+    <string name="eora_append_only">Files are added to the issue as new attachments. Nothing in the issue is edited or replaced.</string>
+    <string name="eora_exact_files">Exactly these files will be sent</string>
+    <string name="eora_video_no_preview">Video preview is not shown here. Check it in your gallery before sending.</string>
+    <string name="eora_approve">I checked the issue and every file above.</string>
+    <string name="eora_send_files">Send %1$d files to %2$s</string>
+    <string name="eora_issue_placeholder">issue</string>
+    <string name="eora_issue_not_found">Issue %1$s was not found.</string>
+    <string name="eora_issue_forbidden">You have no access to %1$s.</string>
+    <string name="eora_lookup_failed">Lookup failed</string>
+
+    <!-- Result -->
+    <string name="eora_issue_line">Issue: %1$s</string>
+    <string name="eora_needs_confirmation_help">Some files may or may not have reached the issue. Open the issue, check its attachments, then tell Eora what you see. Eora will not resend them until you do.</string>
+    <string name="eora_it_is_attached">It is attached</string>
+    <string name="eora_it_is_missing">It is missing</string>
+    <string name="eora_send_remaining">Send %1$d remaining files</string>
+    <string name="eora_close_keep">Close (keep local draft)</string>
+    <string name="eora_delete_draft">Delete local draft</string>
+    <string name="eora_delete_note">Deleting the local draft does not remove files already attached to the issue.</string>
+
+    <string name="eora_status_draft">Draft</string>
+    <string name="eora_status_reviewable">Ready for review</string>
+    <string name="eora_status_approved">Approved, not sent</string>
+    <string name="eora_status_sending">Sending…</string>
+    <string name="eora_status_succeeded">All files attached</string>
+    <string name="eora_status_partial">Some files attached</string>
+    <string name="eora_status_failed">Nothing attached</string>
+    <string name="eora_status_needs_confirmation">Check the issue</string>
+    <string name="eora_status_cancelled">Cancelled</string>
+
+    <string name="eora_file_pending">Not sent</string>
+    <string name="eora_file_uploading">Sending…</string>
+    <string name="eora_file_uploaded">Attached</string>
+    <string name="eora_file_uploaded_confirmed">Attached (you confirmed)</string>
+    <string name="eora_file_rejected">Refused: %1$s</string>
+    <string name="eora_file_failed">Not attached</string>
+    <string name="eora_file_unknown">Unknown, check the issue</string>
+
+    <string name="eora_reject_not_found">issue not found</string>
+    <string name="eora_reject_permission">no permission</string>
+    <string name="eora_reject_too_large">file too large</string>
+    <string name="eora_reject_type">file type not allowed</string>
+    <string name="eora_reject_conflict">conflicts with an earlier send</string>
+    <string name="eora_reject_other">refused</string>
+
+    <!-- Controller messages -->
+    <string name="eora_only_media">Only images and videos can be attached.</string>
+    <string name="eora_read_failed">Could not read the selected file.</string>
+    <string name="eora_too_many_files">At most %1$d files per report.</string>
+    <string name="eora_file_too_large">Files over %1$d MB cannot be attached.</string>
+    <string name="eora_attach_storage_full">Draft storage is full. Delete old drafts first.</string>
+    <string name="eora_generic_error">Something went wrong.</string>
+    <string name="eora_locked">Files were already sent; this report can no longer be edited.</string>
+    <string name="eora_not_reviewable">Choose an issue and add at least one file first.</string>
+    <string name="eora_not_approved">Review and approve the report before sending.</string>
+
+    <!-- Metadata labels -->
+    <string name="eora_meta_report_id">Report ID</string>
+    <string name="eora_meta_created_at">Created at</string>
+    <string name="eora_meta_environment">Environment</string>
+    <string name="eora_meta_app_version_name">App version</string>
+    <string name="eora_meta_app_version_code">App version code</string>
+    <string name="eora_meta_android_version">Android</string>
+    <string name="eora_meta_device">Device</string>
+    <string name="eora_meta_screen">Screen</string>
+</resources>
