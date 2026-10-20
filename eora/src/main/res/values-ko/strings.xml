@@ -31,6 +31,13 @@
     <string name="eora_add_text">텍스트 추가</string>
     <string name="eora_add">추가</string>
     <string name="eora_cancel">취소</string>
+    <string name="eora_discard_confirm_title">이 제보를 취소할까요?</string>
+    <string name="eora_discard_confirm_body">이 기기에 저장된 제목, 내용, 스크린샷, 첨부 파일이 삭제됩니다.</string>
+    <string name="eora_discard_confirm">삭제</string>
+    <string name="eora_keep_editing">계속 작성</string>
+    <string name="eora_reedit_title">스크린샷을 다시 편집할까요?</string>
+    <string name="eora_reedit_body">이전 표시(가린 영역 포함)는 더 이상 남아 있지 않습니다. 원본 캡처부터 다시 편집하며, 다음을 누르면 현재 스크린샷이 바뀝니다. 민감한 영역을 다시 가려 주세요.</string>
+    <string name="eora_reedit_confirm">다시 편집</string>
 
     <string name="eora_no_personal_data">개인정보, 비밀번호, 토큰은 입력하지 마세요.</string>
     <string name="eora_files">첨부 파일</string>

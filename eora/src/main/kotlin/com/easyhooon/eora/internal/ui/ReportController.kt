@@ -25,6 +25,7 @@ import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,6 +66,14 @@ internal class ReportController(
 
     val isSending: Boolean get() = sender.isSending(reportId)
 
+    private var workJob: Job? = null
+
+    /**
+     * Annotations live only in memory. A controller rebuilt from disk (process death, memory trim) has none, so a
+     * screenshot it did not render itself would lose its marks, including hidden areas, if rendered again.
+     */
+    private var renderedScreenshot = false
+
     private fun loadDraft(): ReportDraft? {
         val loaded = store.load(reportId) ?: return null
         // Nothing is sending yet for a fresh controller, so an Uploading file was cut off by process death.
@@ -104,7 +113,18 @@ internal class ReportController(
             ByteArrayOutputStream().also { AnnotationRenderer.writePng(rendered, it); rendered.recycle() }.toByteArray()
         }
         replaceArtifact(ArtifactKind.SCREENSHOT, "image/png", "png", png)
+        renderedScreenshot = true
         onDone()
+    }
+
+    /** True when editing again would start from the bare capture and replace a screenshot whose marks are gone. */
+    fun reEditingStartsOver(): Boolean =
+        !renderedScreenshot && _draft.value?.attachments?.any { it.kind == ArtifactKind.SCREENSHOT } == true
+
+    /** Whether deleting this draft throws away more than the bare capture. */
+    fun hasUserContent(): Boolean {
+        val draft = _draft.value ?: return false
+        return draft.description != ReproDescription() || draft.attachments.any { it.kind != ArtifactKind.METADATA }
     }
 
     fun updateDescription(description: ReproDescription) {
@@ -188,6 +208,10 @@ internal class ReportController(
 
     /** Deletes the local draft and its files. Files already attached to the tracker stay there. */
     fun deleteDraft() {
+        // A render or copy still running would otherwise commit into the deleted draft after it is gone.
+        workJob?.cancel()
+        workJob = null
+        _draft.value = null
         store.delete(reportId)
         runtime.forgetController(reportId)
     }
@@ -229,10 +253,12 @@ internal class ReportController(
     private fun work(block: suspend () -> Unit) {
         if (_busy.value) return
         _busy.value = true
-        runtime.scope.launch {
+        workJob = runtime.scope.launch {
             try {
                 block()
-            } catch (e: Exception) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
                 _message.value = messageFor(e)
             } finally {
                 _busy.value = false

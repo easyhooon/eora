@@ -41,6 +41,9 @@ import java.util.Locale
 
 internal enum class Screen { MENU, DRAFTS, EDITOR, DETAILS, REVIEW, RESULT }
 
+/** Where to go once a draft the user filled in is discarded after confirmation. */
+private enum class DiscardTarget { LEAVE, DRAFTS }
+
 /**
  * [openMenu] is set for shake: the capture is already taken, and the menu decides what to do with it, like the
  * reference QA tool. The manual trigger skips the menu and goes straight to the editor.
@@ -59,6 +62,8 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: B
     }
     var hasDraftsList by rememberSaveable { mutableStateOf(initialReportId == null) }
     var noticeVisible by rememberSaveable { mutableStateOf(showShakeNotice) }
+    var pendingDiscard by rememberSaveable { mutableStateOf<DiscardTarget?>(null) }
+    var confirmReEdit by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
     val controller = reportId?.let { id -> remember(id) { runtime.controllerFor(id) } }
@@ -71,6 +76,7 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: B
     if (controller != null && screen == null) {
         screen = startScreenFor(draft, controller.hasOriginal())
     }
+    val busy = controller?.busy?.collectAsState()?.value == true
     val message = controller?.message?.collectAsState()?.value
     LaunchedEffect(message) {
         if (message != null) {
@@ -93,21 +99,44 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: B
         }
     }
 
-    // Nothing but the capture exists yet, so leaving the menu or the editor discards the report.
-    fun discard() {
+    fun discardNow(target: DiscardTarget) {
         controller?.deleteDraft()
-        backToListOrClose()
+        when (target) {
+            DiscardTarget.LEAVE -> backToListOrClose()
+            DiscardTarget.DRAFTS -> {
+                reportId = null
+                hasDraftsList = true
+                screen = Screen.DRAFTS
+            }
+        }
+    }
+
+    // Leaving the menu or the editor discards the report. A bare capture goes at once; a title, a screenshot or
+    // media is only deleted after the user confirms.
+    fun discard(target: DiscardTarget = DiscardTarget.LEAVE) {
+        if (busy) return
+        if (controller?.hasUserContent() == true) pendingDiscard = target else discardNow(target)
     }
 
     fun leaveEditor() {
+        if (busy) return
         if (openMenu) screen = Screen.MENU else discard()
     }
 
+    fun leaveDetails() {
+        when {
+            controller == null || !controller.hasOriginal() -> backToListOrClose()
+            controller.reEditingStartsOver() -> confirmReEdit = true
+            else -> screen = Screen.EDITOR
+        }
+    }
+
+    // Stays enabled while busy: a disabled handler would let Back finish the activity instead.
     BackHandler {
         when (screen) {
             Screen.MENU -> discard()
             Screen.EDITOR -> leaveEditor()
-            Screen.DETAILS -> if (controller?.hasOriginal() == true) screen = Screen.EDITOR else backToListOrClose()
+            Screen.DETAILS -> leaveDetails()
             Screen.REVIEW -> screen = Screen.DETAILS
             Screen.DRAFTS, Screen.RESULT, null -> if (screen == Screen.DRAFTS) onClose() else backToListOrClose()
         }
@@ -118,14 +147,13 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: B
             controller = controller,
             runtime = runtime,
             onFeedback = { screen = Screen.EDITOR },
-            onDrafts = {
-                controller.deleteDraft()
-                reportId = null
-                hasDraftsList = true
-                screen = Screen.DRAFTS
-            },
-            onClose = ::discard,
+            onDrafts = { discard(DiscardTarget.DRAFTS) },
+            onClose = { discard() },
         )
+        DiscardDialogs(pendingDiscard, confirmReEdit, ::discardNow, onReEdit = { screen = Screen.EDITOR }) {
+            pendingDiscard = null
+            confirmReEdit = false
+        }
         ShakeNotice(runtime, noticeVisible) { noticeVisible = false }
         return
     }
@@ -140,13 +168,13 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: B
                 controller!!,
                 modifier,
                 onBack = ::leaveEditor,
-                onCancel = ::discard,
+                onCancel = { discard() },
                 onNext = { screen = Screen.DETAILS },
             )
             Screen.DETAILS -> DetailsScreen(
                 controller!!,
                 modifier,
-                onBack = { if (controller.hasOriginal()) screen = Screen.EDITOR else backToListOrClose() },
+                onBack = ::leaveDetails,
                 onNext = { screen = Screen.REVIEW },
             )
             Screen.REVIEW -> ReviewScreen(controller!!, modifier, onBack = { screen = Screen.DETAILS }, onSent = { screen = Screen.RESULT })
@@ -161,7 +189,49 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: B
         }
     }
 
+    DiscardDialogs(pendingDiscard, confirmReEdit, ::discardNow, onReEdit = { screen = Screen.EDITOR }) {
+        pendingDiscard = null
+        confirmReEdit = false
+    }
     ShakeNotice(runtime, noticeVisible) { noticeVisible = false }
+}
+
+@Composable
+private fun DiscardDialogs(
+    pendingDiscard: DiscardTarget?,
+    confirmReEdit: Boolean,
+    onDiscard: (DiscardTarget) -> Unit,
+    onReEdit: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    if (pendingDiscard != null) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(stringResource(R.string.eora_discard_confirm_title)) },
+            text = { Text(stringResource(R.string.eora_discard_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDismiss()
+                    onDiscard(pendingDiscard)
+                }) { Text(stringResource(R.string.eora_discard_confirm)) }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.eora_keep_editing)) } },
+        )
+    } else if (confirmReEdit) {
+        // The marks behind the current screenshot are gone, so a new render would drop its hidden areas.
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(stringResource(R.string.eora_reedit_title)) },
+            text = { Text(stringResource(R.string.eora_reedit_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDismiss()
+                    onReEdit()
+                }) { Text(stringResource(R.string.eora_reedit_confirm)) }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.eora_cancel)) } },
+        )
+    }
 }
 
 @Composable

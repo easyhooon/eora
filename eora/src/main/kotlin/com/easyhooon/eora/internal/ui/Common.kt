@@ -32,10 +32,10 @@ private const val STEP_COUNT = 3
 
 /** Back arrow, title and the step bar. [actions] sits at the end of the title row. */
 @Composable
-internal fun EoraHeader(title: String, step: Int?, onBack: () -> Unit, actions: @Composable () -> Unit = {}) {
+internal fun EoraHeader(title: String, step: Int?, onBack: () -> Unit, backEnabled: Boolean = true, actions: @Composable () -> Unit = {}) {
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = onBack, enabled = backEnabled) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.eora_back))
             }
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
