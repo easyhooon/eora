@@ -24,7 +24,10 @@ internal object DraftJson {
         }
         put(
             "description",
-            JSONObject().put("steps", draft.description.steps).put("expected", draft.description.expected).put("actual", draft.description.actual),
+            draft.description.let {
+                JSONObject().put("title", it.title).put("preconditions", it.preconditions).put("observed", it.observed)
+                    .put("expected", it.expected).put("actual", it.actual).put("notes", it.notes)
+            },
         )
         put("metadata", JSONArray(draft.metadata.map { JSONObject().put("key", it.key).put("label", it.label).put("value", it.value) }))
         put("attachments", JSONArray(draft.attachments.map(::encodeAttachment)))
@@ -42,7 +45,15 @@ internal object DraftJson {
             targetIssue = o.optJSONObject("targetIssue")?.let {
                 IssueRef(it.getString("key"), it.optStringOrNull("title"), it.optStringOrNull("project"))
             },
-            description = ReproDescription(description.getString("steps"), description.getString("expected"), description.getString("actual")),
+            description = ReproDescription(
+                title = description.optString("title"),
+                preconditions = description.optString("preconditions"),
+                // Drafts saved before the field split kept everything in "steps".
+                observed = description.optString("observed").ifEmpty { description.optString("steps") },
+                expected = description.optString("expected"),
+                actual = description.optString("actual"),
+                notes = description.optString("notes"),
+            ),
             metadata = o.getJSONArray("metadata").objects().map { MetadataEntry(it.getString("key"), it.getString("label"), it.getString("value")) },
             attachments = o.getJSONArray("attachments").objects().map(::decodeAttachment),
             approvedFingerprint = o.optStringOrNull("approvedFingerprint"),

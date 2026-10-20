@@ -17,9 +17,9 @@ internal data class ImageRect(val left: Float, val top: Float, val right: Float,
 }
 
 internal sealed interface Annotation {
-    data class Circle(val bounds: ImageRect) : Annotation
-    data class Arrow(val from: ImagePoint, val to: ImagePoint) : Annotation
-    data class Text(val anchor: ImagePoint, val text: String) : Annotation
+    data class Circle(val bounds: ImageRect, val color: Int = DEFAULT_COLOR) : Annotation
+    data class Arrow(val from: ImagePoint, val to: ImagePoint, val color: Int = DEFAULT_COLOR) : Annotation
+    data class Text(val anchor: ImagePoint, val text: String, val color: Int = DEFAULT_COLOR) : Annotation
 
     /** A freehand Ink stroke whose coordinates are already image pixels (Ink's world space is the image). */
     class InkStroke(val stroke: Stroke) : Annotation
@@ -27,6 +27,10 @@ internal sealed interface Annotation {
     /** Fully opaque. Blur is not used because blurred text can often be recovered. */
     data class Redaction(val bounds: ImageRect) : Annotation
 }
+
+/** Pen colors offered in the editor, same set as the reference QA tool: red, orange, green, teal. */
+internal val ANNOTATION_COLORS = listOf(0xFFE53935.toInt(), 0xFFF5A623.toInt(), 0xFF2DB55D.toInt(), 0xFF1BB3B3.toInt())
+internal val DEFAULT_COLOR = ANNOTATION_COLORS.first()
 
 /** Shapes smaller than this many image pixels are treated as accidental taps and dropped. */
 internal const val MIN_SHAPE_PX = 8f

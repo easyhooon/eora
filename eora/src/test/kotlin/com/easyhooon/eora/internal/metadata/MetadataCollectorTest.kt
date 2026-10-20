@@ -73,10 +73,12 @@ class MetadataCollectorTest {
     fun `report text is exactly the reviewed entries and description`() {
         val text = MetadataReportWriter.render(
             listOf(MetadataEntry("report_id", "Report ID", "id-1")),
-            ReproDescription(steps = "Open cart", expected = "", actual = "Wrong total"),
+            ReproDescription(title = "Wrong total", observed = "Open cart", actual = "12,300 KRW"),
         )
         assertEquals(
-            "# Eora report\nreport_id: id-1\n\n## Steps to reproduce\nOpen cart\n\n## Expected\n(not provided)\n\n## Actual\nWrong total\n\n",
+            "# Wrong total\nreport_id: id-1\n\n" +
+                "## Preconditions\n(not provided)\n\n## Observed\nOpen cart\n\n## Expected\n(not provided)\n\n" +
+                "## Actual\n12,300 KRW\n\n## Notes\n(not provided)\n\n",
             text,
         )
     }

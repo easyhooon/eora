@@ -26,9 +26,10 @@ internal class EoraReportActivity : ComponentActivity(), EoraOwnActivity {
         this.runtime = runtime
         val reportId = intent.getStringExtra(EXTRA_REPORT_ID)
         val showNotice = savedInstanceState == null && intent.getBooleanExtra(EXTRA_SHOW_SHAKE_NOTICE, false)
+        val openMenu = intent.getBooleanExtra(EXTRA_OPEN_MENU, false)
         setContent {
             MaterialTheme {
-                EoraApp(runtime = runtime, initialReportId = reportId, showShakeNotice = showNotice, onClose = ::finish)
+                EoraApp(runtime = runtime, initialReportId = reportId, openMenu = openMenu, showShakeNotice = showNotice, onClose = ::finish)
             }
         }
     }
@@ -42,10 +43,12 @@ internal class EoraReportActivity : ComponentActivity(), EoraOwnActivity {
     companion object {
         private const val EXTRA_REPORT_ID = "eora.report_id"
         private const val EXTRA_SHOW_SHAKE_NOTICE = "eora.show_shake_notice"
+        private const val EXTRA_OPEN_MENU = "eora.open_menu"
 
-        fun reportIntent(context: Context, reportId: String, showShakeNotice: Boolean): Intent =
+        fun reportIntent(context: Context, reportId: String, openMenu: Boolean, showShakeNotice: Boolean): Intent =
             Intent(context, EoraReportActivity::class.java)
                 .putExtra(EXTRA_REPORT_ID, reportId)
+                .putExtra(EXTRA_OPEN_MENU, openMenu)
                 .putExtra(EXTRA_SHOW_SHAKE_NOTICE, showShakeNotice)
 
         fun draftsIntent(context: Context): Intent = Intent(context, EoraReportActivity::class.java)

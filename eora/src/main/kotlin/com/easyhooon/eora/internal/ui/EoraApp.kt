@@ -3,6 +3,7 @@ package com.easyhooon.eora.internal.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -10,10 +11,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -35,12 +39,25 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-internal enum class Screen { DRAFTS, EDITOR, DETAILS, REVIEW, RESULT }
+internal enum class Screen { MENU, DRAFTS, EDITOR, DETAILS, REVIEW, RESULT }
 
+/**
+ * [openMenu] is set for shake: the capture is already taken, and the menu decides what to do with it, like the
+ * reference QA tool. The manual trigger skips the menu and goes straight to the editor.
+ */
 @Composable
-internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, showShakeNotice: Boolean, onClose: () -> Unit) {
+internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: Boolean, showShakeNotice: Boolean, onClose: () -> Unit) {
     var reportId by rememberSaveable { mutableStateOf(initialReportId) }
-    var screen by rememberSaveable { mutableStateOf<Screen?>(if (initialReportId == null) Screen.DRAFTS else null) }
+    var screen by rememberSaveable {
+        mutableStateOf(
+            when {
+                initialReportId == null -> Screen.DRAFTS
+                openMenu -> Screen.MENU
+                else -> null
+            },
+        )
+    }
+    var hasDraftsList by rememberSaveable { mutableStateOf(initialReportId == null) }
     var noticeVisible by rememberSaveable { mutableStateOf(showShakeNotice) }
     val snackbar = remember { SnackbarHostState() }
 
@@ -68,7 +85,7 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, showShakeNo
     }
 
     fun backToListOrClose() {
-        if (initialReportId == null) {
+        if (hasDraftsList) {
             reportId = null
             screen = Screen.DRAFTS
         } else {
@@ -76,12 +93,41 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, showShakeNo
         }
     }
 
+    // Nothing but the capture exists yet, so leaving the menu or the editor discards the report.
+    fun discard() {
+        controller?.deleteDraft()
+        backToListOrClose()
+    }
+
+    fun leaveEditor() {
+        if (openMenu) screen = Screen.MENU else discard()
+    }
+
     BackHandler {
         when (screen) {
+            Screen.MENU -> discard()
+            Screen.EDITOR -> leaveEditor()
             Screen.DETAILS -> if (controller?.hasOriginal() == true) screen = Screen.EDITOR else backToListOrClose()
             Screen.REVIEW -> screen = Screen.DETAILS
             else -> backToListOrClose()
         }
+    }
+
+    if (screen == Screen.MENU && controller != null) {
+        MenuScreen(
+            controller = controller,
+            runtime = runtime,
+            onFeedback = { screen = Screen.EDITOR },
+            onDrafts = {
+                controller.deleteDraft()
+                reportId = null
+                hasDraftsList = true
+                screen = Screen.DRAFTS
+            },
+            onClose = ::discard,
+        )
+        ShakeNotice(runtime, noticeVisible) { noticeVisible = false }
+        return
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
@@ -93,25 +139,34 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, showShakeNo
             Screen.EDITOR -> EditorScreen(
                 controller!!,
                 modifier,
-                onCancel = {
-                    controller.deleteDraft()
-                    backToListOrClose()
-                },
+                onBack = ::leaveEditor,
+                onCancel = ::discard,
                 onNext = { screen = Screen.DETAILS },
             )
-            Screen.DETAILS -> DetailsScreen(controller!!, modifier, onNext = { screen = Screen.REVIEW })
-            Screen.REVIEW -> ReviewScreen(controller!!, modifier, onSent = { screen = Screen.RESULT })
+            Screen.DETAILS -> DetailsScreen(
+                controller!!,
+                modifier,
+                onBack = { if (controller.hasOriginal()) screen = Screen.EDITOR else backToListOrClose() },
+                onNext = { screen = Screen.REVIEW },
+            )
+            Screen.REVIEW -> ReviewScreen(controller!!, modifier, onBack = { screen = Screen.DETAILS }, onSent = { screen = Screen.RESULT })
             Screen.RESULT -> ResultScreen(
                 controller!!,
                 modifier,
                 onDone = ::backToListOrClose,
                 onDeleted = ::backToListOrClose,
             )
-            null -> Unit
+            Screen.MENU, null -> Unit
         }
     }
 
-    if (noticeVisible) {
+    ShakeNotice(runtime, noticeVisible) { noticeVisible = false }
+}
+
+@Composable
+private fun ShakeNotice(runtime: EoraRuntime, visible: Boolean, onDismiss: () -> Unit) {
+    if (!visible) return
+    run {
         AlertDialog(
             onDismissRequest = {},
             title = { Text(stringResource(R.string.eora_notice_title)) },
@@ -121,14 +176,14 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, showShakeNo
             confirmButton = {
                 TextButton(onClick = {
                     runtime.isShakeNoticeAcknowledged = true
-                    noticeVisible = false
+                    onDismiss()
                 }) { Text(stringResource(R.string.eora_ok)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     runtime.isShakeNoticeAcknowledged = true
                     runtime.isShakeEnabled = false
-                    noticeVisible = false
+                    onDismiss()
                 }) { Text(stringResource(R.string.eora_turn_off_shake)) }
             },
         )
@@ -148,6 +203,18 @@ private fun DraftsScreen(runtime: EoraRuntime, modifier: Modifier, onOpen: (Stri
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.eora_drafts_title), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.eora_drafts_hint), style = MaterialTheme.typography.bodySmall)
+        var shakeEnabled by remember { mutableStateOf(runtime.isShakeEnabled) }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.eora_shake_to_open), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Switch(
+                checked = shakeEnabled,
+                onCheckedChange = {
+                    runtime.isShakeEnabled = it
+                    shakeEnabled = it
+                },
+            )
+        }
+        HorizontalDivider()
         if (drafts.isEmpty()) Text(stringResource(R.string.eora_no_drafts))
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(drafts, key = { it.reportId }) { draft ->

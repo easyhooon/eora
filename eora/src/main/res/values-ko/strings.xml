@@ -32,10 +32,6 @@
     <string name="eora_add">추가</string>
     <string name="eora_cancel">취소</string>
 
-    <string name="eora_describe_title">문제 설명</string>
-    <string name="eora_steps">재현 단계</string>
-    <string name="eora_expected">기대 결과</string>
-    <string name="eora_actual">실제 결과</string>
     <string name="eora_no_personal_data">개인정보, 비밀번호, 토큰은 입력하지 마세요.</string>
     <string name="eora_files">첨부 파일</string>
     <string name="eora_remove">삭제</string>
@@ -44,7 +40,6 @@
     <string name="eora_included_metadata">포함되는 메타데이터</string>
     <string name="eora_review">검토하기</string>
 
-    <string name="eora_review_title">전송 전 검토</string>
     <string name="eora_destination">전송 대상: %1$s</string>
     <string name="eora_issue_key">기존 이슈 키</string>
     <string name="eora_find">조회</string>
@@ -112,4 +107,24 @@
     <string name="eora_meta_android_version">Android</string>
     <string name="eora_meta_device">기기</string>
     <string name="eora_meta_screen">화면</string>
+
+    <!-- Reference-style flow -->
+    <string name="eora_back">뒤로</string>
+    <string name="eora_step_mark">화면에 표시</string>
+    <string name="eora_step_details">상세 입력</string>
+    <string name="eora_step_review">검토 후 전송</string>
+    <string name="eora_title_required">제목 (필수)</string>
+    <string name="eora_preconditions">사전 조건 (선택)</string>
+    <string name="eora_observed">발견 상황 (선택)</string>
+    <string name="eora_expected">예상 결과 (선택)</string>
+    <string name="eora_actual">실제 결과 (선택)</string>
+    <string name="eora_notes">참고 사항 (선택)</string>
+    <string name="eora_title_missing">제목을 입력하세요.</string>
+    <string name="eora_menu_feedback">피드백 보내기</string>
+    <string name="eora_menu_drafts">초안 목록</string>
+    <string name="eora_shake_to_open">흔들어서 열기</string>
+    <string name="eora_color_red">빨강</string>
+    <string name="eora_color_orange">주황</string>
+    <string name="eora_color_green">초록</string>
+    <string name="eora_color_teal">청록</string>
 </resources>

@@ -30,7 +30,8 @@ internal class ShakeSensor(context: Context, private val config: ShakeConfig, pr
         if (listening) return
         // A half-finished shake from before the pause must not complete after resume.
         analyzer.reset()
-        listening = sensorManager?.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI) == true
+        // ~50 Hz. SENSOR_DELAY_UI (~15 Hz) missed the short peaks of a real shake on a Galaxy S25+.
+        listening = sensorManager?.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME) == true
     }
 
     fun stop() {

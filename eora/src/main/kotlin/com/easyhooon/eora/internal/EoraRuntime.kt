@@ -110,7 +110,12 @@ internal class EoraRuntime private constructor(
                     }
                     controllers[draft.reportId] = ReportController(this@EoraRuntime, draft.reportId, result.bitmap)
                     activity.startActivity(
-                        EoraReportActivity.reportIntent(activity, draft.reportId, showShakeNotice = fromShake && !isShakeNoticeAcknowledged),
+                        EoraReportActivity.reportIntent(
+                            activity,
+                            draft.reportId,
+                            openMenu = fromShake,
+                            showShakeNotice = fromShake && !isShakeNoticeAcknowledged,
+                        ),
                     )
                 }
                 CaptureResult.Protected -> abandon(draft.reportId, app.getString(R.string.eora_screen_protected))

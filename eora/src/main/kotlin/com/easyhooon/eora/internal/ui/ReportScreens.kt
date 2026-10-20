@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -51,27 +52,51 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun DetailsScreen(controller: ReportController, modifier: Modifier, onNext: () -> Unit) {
+internal fun DetailsScreen(controller: ReportController, modifier: Modifier, onBack: () -> Unit, onNext: () -> Unit) {
     val draft by controller.draft.collectAsState()
     val busy by controller.busy.collectAsState()
     val current = draft ?: return
-    var steps by rememberSaveable { mutableStateOf(current.description.steps) }
+    var title by rememberSaveable { mutableStateOf(current.description.title) }
+    var preconditions by rememberSaveable { mutableStateOf(current.description.preconditions) }
+    var observed by rememberSaveable { mutableStateOf(current.description.observed) }
     var expected by rememberSaveable { mutableStateOf(current.description.expected) }
     var actual by rememberSaveable { mutableStateOf(current.description.actual) }
+    var notes by rememberSaveable { mutableStateOf(current.description.notes) }
+    var titleError by rememberSaveable { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) controller.addMedia(uri)
     }
 
+    Column(modifier) {
+    EoraHeader(stringResource(R.string.eora_step_details), STEP_DETAILS, onBack)
     Column(
-        modifier
+        Modifier
+            .weight(1f)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.eora_describe_title), style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(steps, { steps = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.eora_steps)) }, minLines = 3)
-        OutlinedTextField(expected, { expected = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.eora_expected)) })
-        OutlinedTextField(actual, { actual = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.eora_actual)) })
+        OutlinedTextField(
+            title,
+            {
+                title = it
+                titleError = false
+            },
+            Modifier.fillMaxWidth(),
+            label = { Text(stringResource(R.string.eora_title_required)) },
+            singleLine = true,
+            isError = titleError,
+            supportingText = if (titleError) ({ Text(stringResource(R.string.eora_title_missing)) }) else null,
+        )
+        listOf(
+            Triple(preconditions, { v: String -> preconditions = v }, R.string.eora_preconditions),
+            Triple(observed, { v: String -> observed = v }, R.string.eora_observed),
+            Triple(expected, { v: String -> expected = v }, R.string.eora_expected),
+            Triple(actual, { v: String -> actual = v }, R.string.eora_actual),
+            Triple(notes, { v: String -> notes = v }, R.string.eora_notes),
+        ).forEach { (value, onChange, label) ->
+            OutlinedTextField(value, onChange, Modifier.fillMaxWidth(), label = { Text(stringResource(label)) }, minLines = 2)
+        }
         Text(stringResource(R.string.eora_no_personal_data), style = MaterialTheme.typography.bodySmall)
 
         HorizontalDivider()
@@ -92,31 +117,42 @@ internal fun DetailsScreen(controller: ReportController, modifier: Modifier, onN
         Text(stringResource(R.string.eora_included_metadata), style = MaterialTheme.typography.titleMedium)
         current.metadata.forEach { Text("${metadataLabel(it)}: ${it.value}", style = MaterialTheme.typography.bodyMedium) }
 
-        Button(
-            onClick = {
-                controller.updateDescription(ReproDescription(steps, expected, actual))
-                controller.prepareReview(onNext)
-            },
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(stringResource(R.string.eora_review)) }
+    }
+    Button(
+        onClick = {
+            val description = ReproDescription(title.trim(), preconditions, observed, expected, actual, notes)
+            if (!description.hasTitle) {
+                titleError = true
+                return@Button
+            }
+            controller.updateDescription(description)
+            controller.prepareReview(onNext)
+        },
+        enabled = !busy,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(52.dp),
+    ) { Text(stringResource(R.string.eora_review)) }
     }
 }
 
 @Composable
-internal fun ReviewScreen(controller: ReportController, modifier: Modifier, onSent: () -> Unit) {
+internal fun ReviewScreen(controller: ReportController, modifier: Modifier, onBack: () -> Unit, onSent: () -> Unit) {
     val draft by controller.draft.collectAsState()
     val lookup by controller.issueLookup.collectAsState()
     val current = draft ?: return
     var issueKey by rememberSaveable { mutableStateOf(current.targetIssue?.key.orEmpty()) }
 
+    Column(modifier) {
+    EoraHeader(stringResource(R.string.eora_step_review), STEP_REVIEW, onBack)
     Column(
-        modifier
+        Modifier
+            .weight(1f)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.eora_review_title), style = MaterialTheme.typography.titleLarge)
         Text(stringResource(R.string.eora_destination, controller.uploaderName), style = MaterialTheme.typography.bodyMedium)
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -159,6 +195,7 @@ internal fun ReviewScreen(controller: ReportController, modifier: Modifier, onSe
             enabled = current.isApproved,
             modifier = Modifier.fillMaxWidth(),
         ) { Text(stringResource(R.string.eora_send_files, current.attachments.size, current.targetIssue?.key ?: stringResource(R.string.eora_issue_placeholder))) }
+    }
     }
 }
 

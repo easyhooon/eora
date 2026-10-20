@@ -13,12 +13,17 @@ internal data class DeviceFacts(
     val model: String,
 )
 
-/** What the user typed. */
+/** What the user typed, in the same fields as the reference QA form. Only [title] is required. */
 internal data class ReproDescription(
-    val steps: String = "",
+    val title: String = "",
+    val preconditions: String = "",
+    val observed: String = "",
     val expected: String = "",
     val actual: String = "",
-)
+    val notes: String = "",
+) {
+    val hasTitle: Boolean get() = title.isNotBlank()
+}
 
 /**
  * Builds the allowlisted metadata. Anything not listed here never reaches the report: there is no generic
@@ -102,12 +107,14 @@ internal object SafeValues {
 /** Renders the metadata file exactly as it will be attached. The review screen shows these same bytes. */
 internal object MetadataReportWriter {
     fun render(entries: List<MetadataEntry>, description: ReproDescription): String = buildString {
-        appendLine("# Eora report")
+        appendLine("# ${description.title.trim().ifEmpty { "Eora report" }}")
         entries.forEach { appendLine("${it.key}: ${it.value}") }
         appendLine()
-        appendSection("Steps to reproduce", description.steps)
+        appendSection("Preconditions", description.preconditions)
+        appendSection("Observed", description.observed)
         appendSection("Expected", description.expected)
         appendSection("Actual", description.actual)
+        appendSection("Notes", description.notes)
     }
 
     private fun StringBuilder.appendSection(title: String, body: String) {

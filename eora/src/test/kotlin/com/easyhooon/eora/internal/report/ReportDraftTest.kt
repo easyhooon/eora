@@ -27,7 +27,7 @@ class ReportDraftTest {
     @Test
     fun `every edit bumps the revision and drops approval`() {
         val approved = reviewable.approve()
-        val edited = approved.edit { it.copy(description = ReproDescription(steps = "x")) }
+        val edited = approved.edit { it.copy(description = ReproDescription(title = "x")) }
         assertEquals(approved.revision + 1, edited.revision)
         assertFalse(edited.isApproved)
         assertTrue(edited.sendableAttachments().isEmpty())

@@ -37,10 +37,6 @@
     <string name="eora_cancel">Cancel</string>
 
     <!-- Details -->
-    <string name="eora_describe_title">Describe the problem</string>
-    <string name="eora_steps">Steps to reproduce</string>
-    <string name="eora_expected">Expected</string>
-    <string name="eora_actual">Actual</string>
     <string name="eora_no_personal_data">Do not type personal data, passwords or tokens.</string>
     <string name="eora_files">Files</string>
     <string name="eora_remove">Remove</string>
@@ -50,7 +46,6 @@
     <string name="eora_review">Review</string>
 
     <!-- Review -->
-    <string name="eora_review_title">Review before sending</string>
     <string name="eora_destination">Destination: %1$s</string>
     <string name="eora_issue_key">Existing issue key</string>
     <string name="eora_find">Find</string>
@@ -120,4 +115,24 @@
     <string name="eora_meta_android_version">Android</string>
     <string name="eora_meta_device">Device</string>
     <string name="eora_meta_screen">Screen</string>
+
+    <!-- Reference-style flow -->
+    <string name="eora_back">Back</string>
+    <string name="eora_step_mark">Mark the screen</string>
+    <string name="eora_step_details">Details</string>
+    <string name="eora_step_review">Review and send</string>
+    <string name="eora_title_required">Title (required)</string>
+    <string name="eora_preconditions">Preconditions (optional)</string>
+    <string name="eora_observed">What happened (optional)</string>
+    <string name="eora_expected">Expected result (optional)</string>
+    <string name="eora_actual">Actual result (optional)</string>
+    <string name="eora_notes">Notes (optional)</string>
+    <string name="eora_title_missing">Enter a title.</string>
+    <string name="eora_menu_feedback">Send feedback</string>
+    <string name="eora_menu_drafts">Drafts</string>
+    <string name="eora_shake_to_open">Shake to open</string>
+    <string name="eora_color_red">Red</string>
+    <string name="eora_color_orange">Orange</string>
+    <string name="eora_color_green">Green</string>
+    <string name="eora_color_teal">Teal</string>
 </resources>

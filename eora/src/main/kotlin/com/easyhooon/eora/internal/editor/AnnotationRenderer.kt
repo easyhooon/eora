@@ -21,7 +21,6 @@ import kotlin.math.sin
  * can end up on top of a hidden area, and PNG re-encoding carries no EXIF or other source metadata.
  */
 internal object AnnotationRenderer {
-    const val ANNOTATION_COLOR = 0xFFE53935.toInt()
     const val HIGHLIGHTER_COLOR = 0x66FFD600
 
     /** Created on first use so code paths without Ink strokes never load Ink's native library. */
@@ -44,7 +43,6 @@ internal object AnnotationRenderer {
         val canvas = Canvas(out)
         val unit = max(2f, min(out.width, out.height) / 180f)
         val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = ANNOTATION_COLOR
             style = Paint.Style.STROKE
             strokeWidth = unit * 1.5f
             strokeCap = Paint.Cap.ROUND
@@ -66,8 +64,8 @@ internal object AnnotationRenderer {
 
     private fun drawAnnotation(canvas: Canvas, annotation: Annotation, stroke: Paint, unit: Float) {
         when (annotation) {
-            is Annotation.Circle -> canvas.drawOval(annotation.bounds.toRectF(), stroke)
-            is Annotation.Arrow -> drawArrow(canvas, annotation, stroke, unit)
+            is Annotation.Circle -> canvas.drawOval(annotation.bounds.toRectF(), stroke.apply { color = annotation.color })
+            is Annotation.Arrow -> drawArrow(canvas, annotation, stroke.apply { color = annotation.color }, unit)
             is Annotation.Text -> drawText(canvas, annotation, unit)
             is Annotation.InkStroke -> drawInk(canvas, annotation, Matrix())
             is Annotation.Redaction -> Unit
@@ -90,7 +88,7 @@ internal object AnnotationRenderer {
 
     private fun drawText(canvas: Canvas, text: Annotation.Text, unit: Float) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = ANNOTATION_COLOR
+            color = text.color
             textSize = unit * 9f
             typeface = Typeface.DEFAULT_BOLD
         }
