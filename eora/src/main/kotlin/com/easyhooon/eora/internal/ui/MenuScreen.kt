@@ -1,5 +1,6 @@
 package com.easyhooon.eora.internal.ui
 
+import android.app.Activity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -87,6 +89,14 @@ internal fun MenuScreen(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
                 MenuRow(stringResource(R.string.eora_menu_feedback), onFeedback)
+                if (runtime.isRecordingAvailable) {
+                    val activity = LocalContext.current as? Activity
+                    MenuRow(stringResource(R.string.eora_menu_record)) {
+                        // The shake capture is not needed for a recording; the consent screen opens over the host.
+                        runtime.startRecording(from = activity)
+                        onClose()
+                    }
+                }
                 MenuRow(stringResource(R.string.eora_menu_drafts), onDrafts)
                 Row(
                     Modifier

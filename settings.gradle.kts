@@ -23,4 +23,5 @@ rootProject.name = "eora"
 include(":eora-api")
 include(":eora")
 include(":eora-noop")
+include(":eora-recording")
 include(":sample")

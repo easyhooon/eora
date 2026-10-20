@@ -14,6 +14,10 @@ import com.easyhooon.eora.internal.capture.CaptureResult
 import com.easyhooon.eora.internal.capture.ScreenCapturer
 import com.easyhooon.eora.internal.metadata.DeviceFacts
 import com.easyhooon.eora.internal.metadata.MetadataCollector
+import com.easyhooon.eora.internal.recording.RecordingConsentActivity
+import com.easyhooon.eora.internal.recording.ScreenRecordingService
+import com.easyhooon.eora.internal.report.ArtifactKind
+import com.easyhooon.eora.internal.report.ReportDraft
 import com.easyhooon.eora.internal.shake.ShakeSensor
 import com.easyhooon.eora.internal.storage.CapacityDecision
 import com.easyhooon.eora.internal.storage.DraftStore
@@ -28,6 +32,7 @@ import java.util.TimeZone
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -58,6 +63,9 @@ internal class EoraRuntime private constructor(
     private var resumedHost: WeakReference<Activity>? = null
     private var reportInProgress = false
 
+    private enum class RecordingState { IDLE, AWAITING_CONSENT, RECORDING }
+    private var recordingState = RecordingState.IDLE
+
     var isShakeEnabled: Boolean
         get() = prefs.getBoolean(KEY_SHAKE_ENABLED, config.shake.enabled)
         set(value) {
@@ -70,7 +78,12 @@ internal class EoraRuntime private constructor(
         set(value) = prefs.edit().putBoolean(KEY_NOTICE_ACK, value).apply()
 
     fun requestReport(fromShake: Boolean) {
-        if (reportInProgress) return
+        // While recording, a shake means "stop", like the reference tool's shake-to-open is "start".
+        if (fromShake && recordingState == RecordingState.RECORDING) {
+            stopRecording()
+            return
+        }
+        if (recordingState != RecordingState.IDLE || reportInProgress) return
         val activity = resumedHost?.get()
         if (activity == null || activity.isFinishing) {
             if (!fromShake) toast(app.getString(R.string.eora_no_screen))
@@ -90,16 +103,7 @@ internal class EoraRuntime private constructor(
                 }
             }
             // Collected now so the values describe the captured screen, not whatever is shown later.
-            val metadata = MetadataCollector.collect(
-                reportId = draft.reportId,
-                createdAtIso = isoUtc(draft.createdAtMs),
-                environmentLabel = config.environmentLabel,
-                device = deviceFacts(),
-                screenIdentifier = runCatching { config.screenIdentifierProvider.screenIdentifier(activity) }.getOrNull(),
-                customFields = runCatching { config.metadataProvider.customFields() }.getOrDefault(emptyMap()),
-                allowedCustomKeys = config.allowedCustomKeys,
-                deviceMarketingNames = config.deviceMarketingNames,
-            )
+            val metadata = collectMetadata(draft, activity)
             store.save(draft.copy(metadata = metadata))
 
             ScreenCapturer.capture(activity) { result ->
@@ -146,12 +150,89 @@ internal class EoraRuntime private constructor(
         }
     }
 
+    private fun collectMetadata(draft: ReportDraft, activity: Activity?) = MetadataCollector.collect(
+        reportId = draft.reportId,
+        createdAtIso = isoUtc(draft.createdAtMs),
+        environmentLabel = config.environmentLabel,
+        device = deviceFacts(),
+        screenIdentifier = activity?.let { runCatching { config.screenIdentifierProvider.screenIdentifier(it) }.getOrNull() },
+        customFields = runCatching { config.metadataProvider.customFields() }.getOrDefault(emptyMap()),
+        allowedCustomKeys = config.allowedCustomKeys,
+        deviceMarketingNames = config.deviceMarketingNames,
+    )
+
     /** Frees the single-report lock and the half-made draft when starting a report fails. */
     private fun failCapture(draftId: String?, error: Throwable) {
         Log.w(TAG, "Could not start a report", error)
         draftId?.let { runCatching { store.delete(it) } }
         reportInProgress = false
         toast(app.getString(R.string.eora_capture_failed))
+    }
+
+    /** True when the app depends on `eora-recording`, which declares the recording service and its permissions. */
+    val isRecordingAvailable: Boolean by lazy { ScreenRecordingService.isDeclared(app) }
+
+    /**
+     * Asks for screen-capture consent and records until a shake, the stop action or 60 s. [from] is the activity to
+     * start the consent screen from; the shake menu passes itself, the public API passes the resumed host screen.
+     */
+    fun startRecording(from: Activity?) {
+        val activity = from ?: resumedHost?.get() ?: return
+        if (!isRecordingAvailable || recordingState != RecordingState.IDLE) return
+        // The shake menu is itself a report screen that closes right after; any other open report blocks recording.
+        if (reportInProgress && activity !is EoraOwnActivity) return
+        recordingState = RecordingState.AWAITING_CONSENT
+        activity.startActivity(Intent(activity, RecordingConsentActivity::class.java))
+    }
+
+    fun onRecordingDeclined() {
+        recordingState = RecordingState.IDLE
+    }
+
+    fun onRecordingStarted() {
+        recordingState = RecordingState.RECORDING
+        toast(app.getString(R.string.eora_recording_started))
+    }
+
+    fun stopRecording() {
+        if (recordingState == RecordingState.RECORDING) app.startService(ScreenRecordingService.stopIntent(app))
+    }
+
+    /** Called by the service on the main thread. [file] is null when nothing usable was recorded. */
+    fun onRecordingFinished(file: File?) {
+        recordingState = RecordingState.IDLE
+        if (file == null) {
+            toast(app.getString(R.string.eora_recording_failed))
+            return
+        }
+        scope.launch {
+            try {
+                val draft = when (val created = store.create(file.length())) {
+                    is DraftStore.CreateResult.Created -> created.draft
+                    is DraftStore.CreateResult.Refused -> {
+                        toast(capacityMessage(created.decision))
+                        return@launch
+                    }
+                }
+                val host = resumedHost?.get()
+                val video = withContext(Dispatchers.IO) {
+                    file.inputStream().use { store.writeArtifact(draft.reportId, ArtifactKind.MEDIA, "video/mp4", "mp4", it) }
+                }
+                // A new draft, not an edit: nothing has been approved yet.
+                store.save(draft.copy(metadata = collectMetadata(draft, host), attachments = listOf(video)))
+                if (host != null && !host.isFinishing && !reportInProgress) {
+                    reportInProgress = true
+                    host.startActivity(EoraReportActivity.reportIntent(host, draft.reportId, openMenu = false, showShakeNotice = false))
+                } else {
+                    toast(app.getString(R.string.eora_recording_saved))
+                }
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                Log.w(TAG, "Could not save the recording", e)
+                toast(app.getString(R.string.eora_recording_failed))
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) { file.delete() }
+            }
+        }
     }
 
     fun openDrafts() {
@@ -243,7 +324,11 @@ internal class EoraRuntime private constructor(
             instance = runtime
             application.registerActivityLifecycleCallbacks(runtime)
             // Expired drafts from earlier runs are removed on start, not only when a new report is created.
-            runtime.scope.launch(Dispatchers.IO) { runtime.store.deleteExpired() }
+            runtime.scope.launch(Dispatchers.IO) {
+                runtime.store.deleteExpired()
+                // Leftovers from a process that died while recording.
+                ScreenRecordingService.recordingDir(application).listFiles()?.forEach { it.delete() }
+            }
         }
 
         fun isoUtc(epochMs: Long): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)

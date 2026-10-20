@@ -46,6 +46,8 @@ android {
 
 dependencies {
     "stgImplementation"(project(":eora"))
+    // Opt-in screen recording; adds two install-time foreground-service permissions to the stg build only.
+    "stgImplementation"(project(":eora-recording"))
     "prodImplementation"(project(":eora-noop"))
 
     implementation(platform(libs.androidx.compose.bom))

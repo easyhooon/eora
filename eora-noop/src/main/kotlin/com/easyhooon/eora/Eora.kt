@@ -11,6 +11,9 @@ object Eora {
     fun startReport() = Unit
 
     @JvmStatic
+    fun startRecording() = Unit
+
+    @JvmStatic
     fun openDrafts() = Unit
 
     @JvmStatic

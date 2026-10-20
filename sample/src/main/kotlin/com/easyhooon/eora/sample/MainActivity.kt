@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
                     ) { Text("Card 1234-5678-9012-3456 (hide me in the editor)") }
                     Text("Shake the device to report, or use the buttons below. In the prod flavor they do nothing.")
                     Button(onClick = { Eora.startReport() }) { Text("Report a problem") }
+                    OutlinedButton(onClick = { Eora.startRecording() }) { Text("Record the screen") }
                     OutlinedButton(onClick = { Eora.openDrafts() }) { Text("Eora drafts") }
                 }
             }

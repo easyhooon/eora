@@ -15,6 +15,8 @@ dependencies {
     // STG(QA) 변형에만 실제 구현, 배포용 변형에는 같은 API의 no-op
     "stgImplementation"("io.github.easyhooon:eora:0.1.0")
     "prodImplementation"("io.github.easyhooon:eora-noop:0.1.0")
+    // 선택: 화면 녹화(0.1.0 이후 릴리스부터 제공). 아래 '필요한 권한' 참고
+    // "stgImplementation"("io.github.easyhooon:eora-recording:<version>")
 }
 ```
 
@@ -40,6 +42,7 @@ Eora.install(
 ```
 
 3. 흔들거나 `Eora.startReport()`(수동 진입)를 호출합니다. 초안 목록은 `Eora.openDrafts()`입니다.
+4. (선택) `eora-recording`을 추가하면 흔들기 메뉴에 "화면 녹화"가 생깁니다. `Eora.startRecording()`으로도 시작할 수 있습니다. 다시 흔들거나, 알림의 정지 버튼을 누르거나, 60초가 지나면 멈춥니다. 녹화본(720p급 H.264, 오디오 없음)은 영상이 첨부된 초안으로 열립니다. 영상은 가림 처리를 할 수 없으니, 민감한 화면이 담겼다면 첨부에서 빼도록 안내합니다.
 
 개발 확인용으로 `LocalExportUploader`(파일을 앱 전용 외부 저장소에 쓰는 PoC)를 쓸 수 있습니다. QA 사용자용 흐름에는 쓰지 않습니다. 전체 예시는 `sample` 모듈에 있습니다.
 
@@ -48,7 +51,7 @@ Eora.install(
 - `eora` 라이브러리는 권한을 선언하지 않습니다. 가속도계(shake), `PixelCopy` 캡처, Photo Picker, 앱 전용 저장소는 권한이 필요 없습니다.
 - 호스트 앱은 실제 업로더(게이트웨이 호출)를 연결할 때 `INTERNET`만 선언하면 됩니다.
 - release용 `eora-noop`은 권한·화면·센서·파일 접근이 없습니다. `./gradlew checkReleaseLeak`이 샘플 prodRelease APK에서 이를 검사합니다.
-- 후속 녹화 기능을 넣으면 `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `POST_NOTIFICATIONS`가 추가됩니다(미구현).
+- 화면 녹화는 opt-in 모듈 `eora-recording`에 있습니다. 이 모듈을 추가한 변형에만 `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`이 합쳐집니다. 둘 다 설치 시 부여되는 권한이라 사용자에게 묻지 않습니다. 대신 녹화할 때마다 시스템 동의 창이 뜹니다. 마이크·알림 권한은 요청하지 않습니다.
 
 ## 빌드와 검증
 

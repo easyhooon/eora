@@ -20,6 +20,15 @@ object Eora {
         EoraRuntime.current()?.requestReport(fromShake = false)
     }
 
+    /**
+     * Records the screen until a shake, the notification's stop action or 60 s, then opens the report with the video
+     * attached. Does nothing unless the app depends on `eora-recording`.
+     */
+    @JvmStatic
+    fun startRecording() {
+        EoraRuntime.current()?.startRecording(from = null)
+    }
+
     /** Opens the list of local drafts, e.g. to finish or check a report that was sent only partly. */
     @JvmStatic
     fun openDrafts() {
