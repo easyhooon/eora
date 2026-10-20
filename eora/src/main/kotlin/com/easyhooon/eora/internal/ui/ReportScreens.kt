@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -38,6 +39,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.easyhooon.eora.R
@@ -169,12 +171,19 @@ internal fun ReviewScreen(controller: ReportController, modifier: Modifier, onBa
         current.attachments.forEach { attachment -> AttachmentPreview(controller, attachment) }
 
         HorizontalDivider()
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = current.isApproved,
-                onCheckedChange = { if (it) controller.approve() },
-                enabled = current.isReviewable && !current.isApproved,
-            )
+        // The whole row toggles, not just the box: people tap the sentence.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = current.isApproved,
+                    enabled = current.isReviewable && !current.isApproved,
+                    role = Role.Checkbox,
+                    onValueChange = { if (it) controller.approve() },
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = current.isApproved, onCheckedChange = null)
             Text(stringResource(R.string.eora_approve))
         }
     }
