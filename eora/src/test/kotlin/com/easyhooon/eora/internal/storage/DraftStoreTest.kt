@@ -12,12 +12,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.ByteArrayInputStream
+import java.io.IOException
 
 // Robolectric only for a real org.json implementation.
 @RunWith(RobolectricTestRunner::class)
@@ -134,5 +136,21 @@ class DraftStoreTest {
         store.writeArtifact(draft.reportId, ArtifactKind.MEDIA, "image/png", "png", ByteArrayInputStream(ByteArray(100)))
         val decision = store.checkAttach(store.load(draft.reportId)!!, 1_000)
         assertTrue(decision is AttachDecision.FileTooLarge)
+    }
+
+    @Test
+    fun `writeArtifact after delete does not recreate the draft`() {
+        val store = store()
+        val draft = store.newDraft()
+        store.delete(draft.reportId)
+        try {
+            store.writeArtifact(draft.reportId, ArtifactKind.SCREENSHOT, "image/png", "png", ByteArrayInputStream(ByteArray(10)))
+            fail("Expected the write to be refused")
+        } catch (expected: IOException) {
+            // A late render must not bring the discarded draft back.
+        }
+        assertFalse(tmp.root.resolve(draft.reportId).exists())
+        assertNull(store.load(draft.reportId))
+        assertTrue(store.list().isEmpty())
     }
 }

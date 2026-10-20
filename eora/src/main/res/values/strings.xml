@@ -35,6 +35,13 @@
     <string name="eora_add_text">Add text</string>
     <string name="eora_add">Add</string>
     <string name="eora_cancel">Cancel</string>
+    <string name="eora_discard_confirm_title">Discard this report?</string>
+    <string name="eora_discard_confirm_body">The title, notes, screenshot and files saved on this device will be deleted.</string>
+    <string name="eora_discard_confirm">Delete</string>
+    <string name="eora_keep_editing">Keep editing</string>
+    <string name="eora_reedit_title">Edit the screenshot again?</string>
+    <string name="eora_reedit_body">The earlier marks, including hidden areas, are no longer available. Editing starts from the original capture, and Next replaces the current screenshot. Hide sensitive areas again.</string>
+    <string name="eora_reedit_confirm">Edit again</string>
 
     <!-- Details -->
     <string name="eora_no_personal_data">Do not type personal data, passwords or tokens.</string>

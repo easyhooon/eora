@@ -104,8 +104,9 @@ internal fun EditorScreen(controller: ReportController, modifier: Modifier, onBa
     var pendingTextAt by remember { mutableStateOf<ImagePoint?>(null) }
 
     Column(modifier) {
-        EoraHeader(stringResource(R.string.eora_step_mark), STEP_MARK, onBack) {
-            TextButton(onClick = onCancel) { Text(stringResource(R.string.eora_discard)) }
+        // Leaving while the screenshot renders would race the render against the deletion.
+        EoraHeader(stringResource(R.string.eora_step_mark), STEP_MARK, onBack, backEnabled = !busy) {
+            TextButton(onClick = onCancel, enabled = !busy) { Text(stringResource(R.string.eora_discard)) }
         }
         Row(
             Modifier

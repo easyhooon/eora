@@ -100,11 +100,15 @@ internal class DraftStore(
      * Copies [source] into the draft as a final artifact, enforcing the per-file limit while copying, because the
      * size a content provider reports in advance can be wrong.
      */
-    // Not synchronized: it writes a new, uniquely named file, and holding the lock during a 50 MB copy would block
-    // saves from the main thread.
+    // The copy is not synchronized: it writes a new, uniquely named file, and holding the lock during a 50 MB copy
+    // would block saves from the main thread.
     fun writeArtifact(reportId: String, kind: ArtifactKind, mimeType: String, extension: String, source: InputStream): DraftAttachment {
         val artifactId = UUID.randomUUID().toString()
-        val dir = File(dirOf(reportId), ARTIFACTS_DIR).apply { mkdirs() }
+        val dir = synchronized(this) {
+            // Never recreate a deleted draft: a late write would bring a discarded report back into the list.
+            if (!dirOf(reportId).isDirectory) throw IOException("Draft $reportId was deleted")
+            File(dirOf(reportId), ARTIFACTS_DIR).apply { mkdir() }
+        }
         val target = File(dir, artifactId)
         val digest = MessageDigest.getInstance("SHA-256")
         var total = 0L

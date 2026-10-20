@@ -1,6 +1,7 @@
 package com.easyhooon.eora.internal.ui
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -70,9 +71,17 @@ internal fun DetailsScreen(controller: ReportController, modifier: Modifier, onB
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) controller.addMedia(uri)
     }
+    // Keeps what was typed when going back, so it is neither lost nor deleted without the discard confirmation.
+    val back = {
+        if (controller.draft.value?.hasTransferStarted == false) {
+            controller.updateDescription(ReproDescription(title.trim(), preconditions, observed, expected, actual, notes))
+        }
+        onBack()
+    }
+    BackHandler(onBack = back)
 
     Column(modifier) {
-    EoraHeader(stringResource(R.string.eora_step_details), STEP_DETAILS, onBack)
+    EoraHeader(stringResource(R.string.eora_step_details), STEP_DETAILS, back)
     Column(
         Modifier
             .weight(1f)
