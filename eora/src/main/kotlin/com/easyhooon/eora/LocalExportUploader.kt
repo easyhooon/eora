@@ -6,29 +6,30 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * DEVELOPMENT PoC ONLY. Instead of attaching to a tracker, copies the approved files to
- * `Android/data/<package>/files/eora-export/<issue>/<reportId>-r<revision>/` so a developer can inspect exactly what
- * would be sent (e.g. with Device Explorer). It is not a QA workflow: QA users should never have to move files.
+ * DEVELOPMENT PoC ONLY. Instead of creating an issue in a tracker, writes it to
+ * `Android/data/<package>/files/eora-export/<LOCAL-n>/` (`issue.txt` plus the attached files) so a developer can
+ * inspect exactly what would be sent (e.g. with Device Explorer). It is not a QA workflow: QA users should never
+ * have to move files.
  */
 class LocalExportUploader(context: Context) : IssueUploader {
     private val root = File(context.applicationContext.getExternalFilesDir(null) ?: context.applicationContext.filesDir, "eora-export")
 
     override val displayName: String = "Local export (development only)"
 
-    override suspend fun findIssue(issueKey: String): IssueLookupResult =
-        if (ISSUE_KEY.matches(issueKey)) {
-            IssueLookupResult.Found(IssueRef(key = issueKey, title = "Local export, no tracker", project = issueKey.substringBefore('-')))
-        } else {
-            IssueLookupResult.NotFound
-        }
-
-    override suspend fun upload(request: UploadRequest): ArtifactUploadResult = withContext(Dispatchers.IO) {
-        val dir = File(File(root, request.issueKey), "${request.reportId}-r${request.revision}").apply { mkdirs() }
-        request.file.copyTo(File(dir, request.fileName), overwrite = true)
-        ArtifactUploadResult.Uploaded(remoteAttachmentId = "local:${request.fileName}")
+    override suspend fun createIssue(request: CreateIssueRequest): IssueCreateResult = withContext(Dispatchers.IO) {
+        // Same report and revision maps to the same local issue, like the idempotency a real gateway should offer.
+        val existing = root.listFiles()?.firstOrNull { File(it, "${request.reportId}-r${request.revision}").exists() }
+        val next = (root.listFiles()?.mapNotNull { it.name.removePrefix("LOCAL-").toIntOrNull() }?.maxOrNull() ?: 0) + 1
+        val dir = existing ?: File(root, "LOCAL-$next").apply { mkdirs() }
+        File(dir, "${request.reportId}-r${request.revision}").writeText("")
+        File(dir, "issue.txt").writeText("${request.title}\n\n${request.description}")
+        IssueCreateResult.Created(IssueRef(key = dir.name, title = request.title, project = "LOCAL"))
     }
 
-    private companion object {
-        val ISSUE_KEY = Regex("^[A-Z][A-Z0-9_]+-[0-9]+$")
+    override suspend fun upload(request: UploadRequest): ArtifactUploadResult = withContext(Dispatchers.IO) {
+        val dir = File(root, request.issueKey)
+        if (!dir.isDirectory) return@withContext ArtifactUploadResult.Rejected(RejectReason.ISSUE_NOT_FOUND)
+        request.file.copyTo(File(dir, request.fileName), overwrite = true)
+        ArtifactUploadResult.Uploaded(remoteAttachmentId = "local:${request.fileName}")
     }
 }

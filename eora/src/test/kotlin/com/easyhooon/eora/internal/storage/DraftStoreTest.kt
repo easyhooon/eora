@@ -1,9 +1,13 @@
 package com.easyhooon.eora.internal.storage
 
+import com.easyhooon.eora.IssueCreateResult
 import com.easyhooon.eora.IssueRef
+import com.easyhooon.eora.RejectReason
 import com.easyhooon.eora.StorageLimits
+import com.easyhooon.eora.internal.metadata.ReproDescription
 import com.easyhooon.eora.internal.report.ArtifactKind
 import com.easyhooon.eora.internal.report.ArtifactStatus
+import com.easyhooon.eora.internal.report.IssueStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -32,12 +36,14 @@ class DraftStoreTest {
         val store = store()
         val draft = store.newDraft()
         val attachment = store.writeArtifact(draft.reportId, ArtifactKind.MEDIA, "image/png", "png", ByteArrayInputStream(ByteArray(10)))
-        val saved = draft.edit { it.copy(targetIssue = IssueRef("QA-1", "Title"), attachments = listOf(attachment)) }.approve()
+        val saved = draft.edit { it.copy(description = ReproDescription(title = "Title", notes = "n"), attachments = listOf(attachment)) }.approve()
+            .markCreating().applyCreateResult(IssueCreateResult.Created(IssueRef("QA-1", "Title")))
             .markUploading(attachment.artifactId)
         store.save(saved)
         assertEquals(saved.copy(), store.load(draft.reportId)!!)
         assertTrue(store.load(draft.reportId)!!.isApproved)
         assertTrue(store.load(draft.reportId)!!.attachments.single().status is ArtifactStatus.Uploading)
+        assertEquals("QA-1", store.load(draft.reportId)!!.createdIssue?.key)
     }
 
     @Test
@@ -84,6 +90,32 @@ class DraftStoreTest {
         store.newDraft()
         now += 10_000
         assertTrue(store.create(0) is DraftStore.CreateResult.Created)
+    }
+
+    @Test
+    fun `unreadable drafts expire by directory age, capture included`() {
+        val store = store()
+        val dir = tmp.newFolder("6f1c3b1e-0000-4000-8000-000000000001")
+        dir.resolve("draft.json").writeText("{ not json")
+        dir.resolve("original.png").writeBytes(ByteArray(5))
+        dir.setLastModified(now)
+        store.deleteExpired()
+        assertTrue(dir.exists())
+        now += 10_000
+        store.deleteExpired()
+        assertFalse(dir.exists())
+    }
+
+    @Test
+    fun `an unknown reject reason does not make a draft unreadable`() {
+        val store = store()
+        val draft = store.newDraft()
+        val file = tmp.root.resolve(draft.reportId).resolve("draft.json")
+        val json = org.json.JSONObject(file.readText())
+        json.put("issue", org.json.JSONObject().put("type", "rejected").put("reason", "FROM_THE_FUTURE"))
+        file.writeText(json.toString())
+        val issue = store.load(draft.reportId)!!.issue
+        assertEquals(RejectReason.OTHER, (issue as IssueStatus.Rejected).reason)
     }
 
     @Test

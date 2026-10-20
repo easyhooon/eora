@@ -47,22 +47,11 @@
 
     <!-- Review -->
     <string name="eora_destination">Destination: %1$s</string>
-    <string name="eora_issue_key">Existing issue key</string>
-    <string name="eora_find">Find</string>
-    <string name="eora_project">Project: %1$s</string>
-    <string name="eora_append_only">Files are added to the issue as new attachments. Nothing in the issue is edited or replaced.</string>
     <string name="eora_exact_files">Exactly these files will be sent</string>
     <string name="eora_video_no_preview">Video preview is not shown here. Check it in your gallery before sending.</string>
     <string name="eora_approve">I checked the issue and every file above.</string>
-    <string name="eora_send_files">Send %1$d files to %2$s</string>
-    <string name="eora_issue_placeholder">issue</string>
-    <string name="eora_issue_not_found">Issue %1$s was not found.</string>
-    <string name="eora_issue_forbidden">You have no access to %1$s.</string>
-    <string name="eora_lookup_failed">Lookup failed</string>
 
     <!-- Result -->
-    <string name="eora_issue_line">Issue: %1$s</string>
-    <string name="eora_needs_confirmation_help">Some files may or may not have reached the issue. Open the issue, check its attachments, then tell Eora what you see. Eora will not resend them until you do.</string>
     <string name="eora_it_is_attached">It is attached</string>
     <string name="eora_it_is_missing">It is missing</string>
     <string name="eora_send_remaining">Send %1$d remaining files</string>
@@ -135,4 +124,24 @@
     <string name="eora_color_orange">Orange</string>
     <string name="eora_color_green">Green</string>
     <string name="eora_color_teal">Teal</string>
+
+    <!-- New issue -->
+    <string name="eora_creates_issue">A new issue is created with this title and text, then the files below are attached to it.</string>
+    <string name="eora_issue_title_label">Issue title</string>
+    <string name="eora_issue_body_label">Issue description</string>
+    <string name="eora_create_and_attach">Create issue and attach %1$d files</string>
+    <string name="eora_retry_create">Create the issue again</string>
+    <string name="eora_issue_created">Issue created</string>
+    <string name="eora_issue_created_confirmed">Issue created (you confirmed)</string>
+    <string name="eora_issue_not_created">Issue not created yet</string>
+    <string name="eora_issue_creating">Creating the issue…</string>
+    <string name="eora_issue_rejected">Issue refused: %1$s</string>
+    <string name="eora_issue_failed">Issue was not created</string>
+    <string name="eora_issue_unknown">Unknown whether the issue was created. Check the tracker.</string>
+    <string name="eora_found_issue_key">Key of the issue you found</string>
+    <string name="eora_issue_exists">It exists</string>
+    <string name="eora_issue_missing">It was not created</string>
+    <string name="eora_reject_invalid_fields">invalid title or description</string>
+    <string name="eora_needs_confirmation_help">Eora could not tell whether the issue or some files reached the tracker. Check the tracker, then tell Eora what you see. Nothing is sent again until you do.</string>
+    <string name="eora_edit_report">Edit the report</string>
 </resources>

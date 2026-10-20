@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
-import com.easyhooon.eora.IssueLookupResult
 import com.easyhooon.eora.R
 import com.easyhooon.eora.internal.EoraRuntime
 import com.easyhooon.eora.internal.editor.Annotation
@@ -17,23 +16,20 @@ import com.easyhooon.eora.internal.report.DraftAttachment
 import com.easyhooon.eora.internal.report.DraftError
 import com.easyhooon.eora.internal.report.ReportDraft
 import com.easyhooon.eora.internal.report.ReportSender
+import com.easyhooon.eora.internal.report.ReportStatus
 import com.easyhooon.eora.internal.storage.AttachDecision
 import com.easyhooon.eora.internal.storage.DraftStore
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-internal sealed interface IssueLookupState {
-    data object Idle : IssueLookupState
-    data object Loading : IssueLookupState
-    data class Error(val message: String) : IssueLookupState
-}
 
 /**
  * State of one report screen. Lives in [EoraRuntime], not in the activity, so rotation keeps annotations and
@@ -58,9 +54,6 @@ internal class ReportController(
 
     private val _annotations = MutableStateFlow<List<Annotation>>(emptyList())
     val annotations: StateFlow<List<Annotation>> = _annotations.asStateFlow()
-
-    private val _issueLookup = MutableStateFlow<IssueLookupState>(IssueLookupState.Idle)
-    val issueLookup: StateFlow<IssueLookupState> = _issueLookup.asStateFlow()
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
@@ -156,53 +149,39 @@ internal class ReportController(
         }
     }
 
-    /** Writes the metadata file the user will review. Unchanged content keeps the same artifact and approval. */
-    fun prepareReview(onDone: () -> Unit) = work {
-        val draft = requireDraft()
-        val text = MetadataReportWriter.render(draft.metadata, draft.description).toByteArray()
-        val existing = draft.attachments.firstOrNull { it.kind == ArtifactKind.METADATA }
-        if (existing == null || withContext(Dispatchers.IO) { !store.artifactFile(reportId, existing).readBytes().contentEquals(text) }) {
-            if (!draft.hasTransferStarted) replaceArtifact(ArtifactKind.METADATA, "text/plain", "txt", text)
-        }
-        onDone()
-    }
+    /**
+     * The text sent as the issue description, rendered from the draft. The review screen shows this and the sender
+     * renders it the same way, so the user approves exactly what is sent.
+     */
+    fun issueText(draft: ReportDraft): String = MetadataReportWriter.render(draft.metadata, draft.description)
 
     fun readText(attachment: DraftAttachment): String = store.artifactFile(reportId, attachment).readText()
 
     fun fileOf(attachment: DraftAttachment): File = store.artifactFile(reportId, attachment)
-
-    fun lookupIssue(rawKey: String) {
-        val key = rawKey.trim().uppercase()
-        if (key.isEmpty()) return
-        _issueLookup.value = IssueLookupState.Loading
-        runtime.scope.launch {
-            val result = runCatching { runtime.config.uploader.findIssue(key) }
-                .getOrElse { IssueLookupResult.Failed(it.message ?: str(R.string.eora_lookup_failed)) }
-            _issueLookup.value = when (result) {
-                is IssueLookupResult.Found -> {
-                    guarded { commit(requireDraft().edit { it.copy(targetIssue = result.issue) }) }
-                    IssueLookupState.Idle
-                }
-                IssueLookupResult.NotFound -> IssueLookupState.Error(str(R.string.eora_issue_not_found, key))
-                IssueLookupResult.Forbidden -> IssueLookupState.Error(str(R.string.eora_issue_forbidden, key))
-                is IssueLookupResult.Failed -> IssueLookupState.Error(result.message)
-            }
-        }
-    }
 
     fun approve() = guarded { commit(requireDraft().approve()) }
 
     /** Starts a send of the files that may be sent. A second tap while sending does nothing. */
     fun send() {
         val draft = _draft.value ?: return
-        runtime.scope.launch {
+        // Off the main thread: host uploaders may use blocking HTTP clients.
+        runtime.scope.launch(Dispatchers.IO) {
             try {
-                sender.send(draft)
-            } catch (e: DraftError) {
+                val result = sender.send(draft) ?: return@launch
+                // The unredacted capture is only needed for editing, which is over once everything is attached.
+                if (result.status == ReportStatus.SUCCEEDED) store.originalCaptureFile(reportId).delete()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                // DraftError, or an IOException while saving state; the saved state is recovered on next load.
                 _message.value = messageFor(e)
             }
         }
     }
+
+
+    /** [createdKey] is the issue the user found in the tracker, or null when there is none. */
+    fun resolveUnknownIssue(createdKey: String?) = guarded { commit(requireDraft().resolveUnknownIssue(createdKey)) }
 
     fun resolveUnknown(attachment: DraftAttachment, arrived: Boolean) =
         guarded { commit(requireDraft().resolveUnknown(attachment.artifactId, arrived)) }
@@ -221,7 +200,12 @@ internal class ReportController(
     private suspend fun replaceArtifact(kind: ArtifactKind, mime: String, extension: String, bytes: ByteArray) {
         val attachment = withContext(Dispatchers.IO) { store.writeArtifact(reportId, kind, mime, extension, ByteArrayInputStream(bytes)) }
         val previous = requireDraft().attachments.filter { it.kind == kind }
-        commit(requireDraft().edit { draft -> draft.copy(attachments = draft.attachments.filterNot { it.kind == kind } + attachment) })
+        try {
+            commit(requireDraft().edit { draft -> draft.copy(attachments = draft.attachments.filterNot { it.kind == kind } + attachment) })
+        } catch (e: IllegalStateException) {
+            store.deleteArtifact(reportId, attachment)
+            throw e
+        }
         previous.forEach { store.deleteArtifact(reportId, it) }
     }
 
@@ -236,6 +220,8 @@ internal class ReportController(
         try {
             block()
         } catch (e: IllegalStateException) {
+            _message.value = messageFor(e)
+        } catch (e: IOException) {
             _message.value = messageFor(e)
         }
     }
@@ -267,6 +253,7 @@ internal class ReportController(
         is DraftError.Locked -> str(R.string.eora_locked)
         is DraftError.NotReviewable -> str(R.string.eora_not_reviewable)
         is DraftError.NotApproved -> str(R.string.eora_not_approved)
+        is DraftError.IssueNotCreated -> str(R.string.eora_issue_not_created)
         else -> e.message ?: str(R.string.eora_generic_error)
     }
 }

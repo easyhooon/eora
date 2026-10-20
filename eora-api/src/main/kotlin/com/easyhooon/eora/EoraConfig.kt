@@ -4,7 +4,7 @@ package com.easyhooon.eora
  * Everything the host decides about Eora. Build it only in the STG source set so the uploader and providers it
  * references never compile into a release build.
  */
-class EoraConfig(
+class EoraConfig @JvmOverloads constructor(
     /** Sends approved reports to the issue tracker. There is no default: the host decides where reports go. */
     val uploader: IssueUploader,
     val shake: ShakeConfig = ShakeConfig(),

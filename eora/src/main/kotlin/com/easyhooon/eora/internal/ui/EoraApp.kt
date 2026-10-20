@@ -109,7 +109,7 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: B
             Screen.EDITOR -> leaveEditor()
             Screen.DETAILS -> if (controller?.hasOriginal() == true) screen = Screen.EDITOR else backToListOrClose()
             Screen.REVIEW -> screen = Screen.DETAILS
-            else -> backToListOrClose()
+            Screen.DRAFTS, Screen.RESULT, null -> if (screen == Screen.DRAFTS) onClose() else backToListOrClose()
         }
     }
 
@@ -153,6 +153,7 @@ internal fun EoraApp(runtime: EoraRuntime, initialReportId: String?, openMenu: B
             Screen.RESULT -> ResultScreen(
                 controller!!,
                 modifier,
+                onEdit = { screen = Screen.DETAILS },
                 onDone = ::backToListOrClose,
                 onDeleted = ::backToListOrClose,
             )
@@ -199,7 +200,8 @@ private fun startScreenFor(draft: ReportDraft?, hasOriginal: Boolean): Screen = 
 
 @Composable
 private fun DraftsScreen(runtime: EoraRuntime, modifier: Modifier, onOpen: (String) -> Unit, onClose: () -> Unit) {
-    val drafts = remember { runtime.store.list() }
+    // A draft left mid-send by a dead process shows as needing confirmation, as it will when opened.
+    val drafts = remember { runtime.store.list().map { if (runtime.isSending(it.reportId)) it else it.recoverInterruptedTransfer() } }
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.eora_drafts_title), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.eora_drafts_hint), style = MaterialTheme.typography.bodySmall)
@@ -220,7 +222,7 @@ private fun DraftsScreen(runtime: EoraRuntime, modifier: Modifier, onOpen: (Stri
             items(drafts, key = { it.reportId }) { draft ->
                 Card(onClick = { onOpen(draft.reportId) }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
-                        Text(draft.targetIssue?.key ?: stringResource(R.string.eora_no_issue_yet), style = MaterialTheme.typography.titleMedium)
+                        Text(draft.createdIssue?.key ?: draft.description.title.ifBlank { stringResource(R.string.eora_no_issue_yet) }, style = MaterialTheme.typography.titleMedium)
                         Text("${stringResource(statusLabel(draft.status))} · ${localTime(draft.createdAtMs)}", style = MaterialTheme.typography.bodySmall)
                     }
                 }

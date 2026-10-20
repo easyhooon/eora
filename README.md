@@ -6,7 +6,42 @@
 
 STG Android 앱에서 문제 화면과 재현 정보를 모아, 검토한 뒤 이슈 트래커에 전달하기 위한 **커스터마이징 가능한 QA 라이브러리 구상**입니다.
 
-> 현재 상태: Phase 1(로컬 캡처 PoC) 구현 중입니다. `eora`(STG용 구현), `eora-noop`(release용), `eora-api`(공유 타입), `sample` 모듈이 있습니다. 실제 Jira 업로더·게이트웨이는 인증 방식이 정해지지 않아 아직 없고, 배포된 SDK 아티팩트도 없습니다. 공개 API는 확정 전이며 바뀔 수 있습니다. 결정이 필요한 항목은 [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md)에 있습니다.
+> 현재 상태: 0.1.0 개발자 프리뷰입니다. 실제 Jira 업로더·게이트웨이는 포함하지 않으므로 호스트가 `IssueUploader`를 구현해야 합니다(아래 연동 가이드). 0.x 동안 공개 API가 바뀔 수 있습니다. 결정이 필요한 항목은 [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md)에 있습니다.
+
+## 설치
+
+```kotlin
+dependencies {
+    // STG(QA) 변형에만 실제 구현, 배포용 변형에는 같은 API의 no-op
+    "stgImplementation"("io.github.easyhooon:eora:0.1.0")
+    "prodImplementation"("io.github.easyhooon:eora-noop:0.1.0")
+}
+```
+
+변형 이름은 호스트의 flavor/build type에 맞춥니다. minSdk 26, Jetpack Compose와 `androidx.ink` `1.1.0-alpha07`을 사용합니다.
+
+## 연동 가이드
+
+1. `IssueUploader`를 구현합니다. 조직이 운영하는 게이트웨이를 호출하고, Jira 토큰·시크릿은 APK에 넣지 않습니다.
+   - `createIssue`: 새 이슈 생성. 게이트웨이는 `reportId` + `revision`으로 중복 생성을 막아야 합니다.
+   - `upload`: 생성된 이슈에 파일 하나 첨부.
+   - 응답을 잃었을 수 있으면 `Unknown`을, 확실히 실패했을 때만 `Failed`를 돌려줍니다. 두 함수는 백그라운드 스레드에서 호출됩니다.
+2. STG 소스셋에서만 설치합니다(배포용 코드에 업로더·설정이 들어가지 않게).
+
+```kotlin
+// src/stg/.../QaSetup.kt
+Eora.install(
+    application,
+    EoraConfig(
+        uploader = MyGatewayUploader(),
+        screenIdentifierProvider = { activity -> activity.javaClass.simpleName },
+    ),
+)
+```
+
+3. 흔들거나 `Eora.startReport()`(수동 진입)를 호출합니다. 초안 목록은 `Eora.openDrafts()`입니다.
+
+개발 확인용으로 `LocalExportUploader`(파일을 앱 전용 외부 저장소에 쓰는 PoC)를 쓸 수 있습니다. QA 사용자용 흐름에는 쓰지 않습니다. 전체 예시는 `sample` 모듈에 있습니다.
 
 ## 필요한 권한
 
@@ -21,7 +56,7 @@ STG Android 앱에서 문제 화면과 재현 정보를 모아, 검토한 뒤 �
 ./gradlew :eora:testDebugUnitTest checkEoraApiParity checkReleaseLeak
 ```
 
-샘플 앱 실행: `./gradlew :sample:installStgDebug` 후 화면을 흔들거나 "Report a problem"을 누릅니다. 데모 이슈 키 `DEMO-1`(성공), `DEMO-2`(응답 유실), `DEMO-3`(영상 거부), `DEMO-403`(권한 없음)으로 상태별 흐름을 볼 수 있습니다.
+샘플 앱 실행: `./gradlew :sample:installStgDebug` 후 화면을 흔들거나 "Report a problem"을 누릅니다. 제목 앞에 `[lost]`(이슈 생성 응답 유실), `[partial]`(스크린샷 응답 유실), `[video]`(영상 거부), `[403]`(권한 없음)을 붙이면 상태별 흐름을 볼 수 있고, 붙이지 않으면 성공합니다.
 
 ## 해결하려는 문제
 
@@ -33,10 +68,10 @@ QA 중 화면을 캡처하고, 문제 위치를 표시하고, 기기·앱 버전
 2. 제보 UI가 뜨기 전 원래 화면을 캡처하고, 편집기에서 원·화살표·텍스트로 문제 위치를 표시한다.
 3. 민감한 영역을 불투명하게 가리고, 필요한 경우 이미 녹화한 영상을 선택한다.
 4. 앱 버전, OS, 기기 모델, 안전하게 가공된 화면 식별자와 재현 설명을 확인한다.
-5. 기존 Jira 티켓을 선택하고 첨부 내용·대상을 최종 검토한다.
+5. 새로 만들 Jira 이슈의 제목·본문과 첨부 파일을 최종 검토한다.
 6. 사용자가 업로드를 눌렀을 때만 전송하고, 파일별 성공 여부를 확인한다.
 
-Jira 연동은 **기존 티켓에 첨부를 추가**하는 방식입니다. 첨부 파일을 같은 이름으로 덮어쓰는 upsert를 제공한다고 가정하지 않습니다.
+Jira 연동은 제보마다 **새 이슈를 생성하고 그 이슈에 파일을 첨부**하는 방식입니다(2026-10-20 결정, OPEN_QUESTIONS #15). 기존 이슈를 수정하거나 기존 첨부를 덮어쓰지 않습니다.
 
 ## MVP 범위
 
@@ -46,10 +81,10 @@ Jira 연동은 **기존 티켓에 첨부를 추가**하는 방식입니다. 첨�
 - 불투명 가림 처리와 최종 결과 미리보기
 - 허용 목록 기반의 최소 재현 메타데이터
 - 기존 이미지·영상 선택, 크기 제한, 로컬 임시 보관
-- 사용자 확인 후 기존 이슈에 첨부하는 교체 가능한 업로더
+- 사용자 확인 후 새 이슈를 만들고 첨부하는 교체 가능한 업로더
 - 재시도 시 같은 보고서를 식별하고 부분 업로드를 복구하는 설계
 
-사용자가 쓰는 MVP는 앱 안에서 기존 Jira 티켓에 직접 첨부하는 흐름까지 포함합니다. 로컬 파일 내보내기는 개발 검증용 PoC일 뿐 사용 가능한 MVP로 취급하지 않습니다. QA 담당자에게 파일 이동이나 CLI 사용을 요구하지 않습니다. 인증 방식이 정해지기 전에는 Jira 연동 완료 일정을 약속하지 않으며, 앱 내 영상 녹화는 후속 범위입니다.
+사용자가 쓰는 MVP는 앱 안에서 Jira 이슈를 만들고 직접 첨부하는 흐름까지 포함합니다. 로컬 파일 내보내기는 개발 검증용 PoC일 뿐 사용 가능한 MVP로 취급하지 않습니다. QA 담당자에게 파일 이동이나 CLI 사용을 요구하지 않습니다. 인증 방식이 정해지기 전에는 Jira 연동 완료 일정을 약속하지 않으며, 앱 내 영상 녹화는 후속 범위입니다.
 
 ## 커스터마이징 방향
 
@@ -89,7 +124,7 @@ shake는 STG 호스트 앱이 foreground일 때만 감지합니다. 감지되면
 
 ## 미결정 사항
 
-최소 Android 버전, 초기 UI 구현 방식, Jira Cloud/Data Center 대상, 사내 인증 방식, 파일 보관 기간·상한, 배포 채널 및 라이선스는 결정 전입니다. 현재 설치 명령이나 Maven 좌표는 제공하지 않습니다.
+Jira Cloud/Data Center 대상, 사내 인증 방식, 게이트웨이 API 계약, 리포터·담당자 지정 방식은 결정 전입니다. 임시 기본값과 함께 [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md)에 정리했습니다.
 
 ## 공식 참고 자료
 
@@ -102,4 +137,18 @@ shake는 STG 호스트 앱이 foreground일 때만 감지합니다. 감지되면
 
 ## License
 
-라이선스는 아직 선택하지 않았으며 LICENSE 파일도 추가하지 않았습니다. 공개 저장소라는 사실만으로 별도의 오픈소스 라이선스가 부여된 것으로 간주하지 마세요.
+```
+Copyright 2026 easyhooon
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```

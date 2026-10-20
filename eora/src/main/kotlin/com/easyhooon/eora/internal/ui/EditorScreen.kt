@@ -59,6 +59,7 @@ import androidx.ink.authoring.compose.InProgressStrokes
 import androidx.ink.brush.Brush
 import androidx.ink.brush.StockBrushes
 import androidx.ink.brush.compose.createWithComposeColor
+import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import com.easyhooon.eora.R
 import com.easyhooon.eora.internal.editor.ANNOTATION_COLORS
 import com.easyhooon.eora.internal.editor.Annotation
@@ -128,6 +129,7 @@ internal fun EditorScreen(controller: ReportController, modifier: Modifier, onBa
             } else {
                 val transform = ImageTransform(bitmap.width, bitmap.height, viewSize.width.toFloat(), viewSize.height.toFloat(), zoom, pan.x, pan.y)
                 val image = remember(bitmap) { bitmap.asImageBitmap() }
+                val strokeRenderer = remember { CanvasStrokeRenderer.create() }
                 val gestures = when (tool) {
                     // Ink tools take input through InProgressStrokes below.
                     Tool.PEN, Tool.HIGHLIGHTER -> Modifier
@@ -170,7 +172,7 @@ internal fun EditorScreen(controller: ReportController, modifier: Modifier, onBa
                         dstSize = IntSize((bitmap.width * transform.scale).roundToInt(), (bitmap.height * transform.scale).roundToInt()),
                     )
                     val inProgress = dragStart?.let { s -> dragEnd?.let { e -> shapeFor(tool, s, e, color) } }
-                    (annotations + listOfNotNull(inProgress)).forEach { drawPreview(it, transform) }
+                    (annotations + listOfNotNull(inProgress)).forEach { drawPreview(it, transform, strokeRenderer) }
                 }
                 if (tool.isInk) {
                     val brush = remember(tool, color, bitmap) { inkBrush(tool, color, bitmap.width, bitmap.height) }
@@ -248,11 +250,11 @@ private fun inkBrush(tool: Tool, color: Int, imageWidth: Int, imageHeight: Int):
     }
 }
 
-private fun DrawScope.drawPreview(annotation: Annotation, t: ImageTransform) {
+private fun DrawScope.drawPreview(annotation: Annotation, t: ImageTransform, strokeRenderer: CanvasStrokeRenderer) {
     val stroke = Stroke(width = 3.dp.toPx())
     fun rect(r: ImageRect) = Offset(t.toViewX(r.left), t.toViewY(r.top)) to Size(r.width * t.scale, r.height * t.scale)
     when (annotation) {
-        is Annotation.InkStroke -> AnnotationRenderer.drawInk(drawContext.canvas.nativeCanvas, annotation, t.imageToViewMatrix())
+        is Annotation.InkStroke -> AnnotationRenderer.drawInk(drawContext.canvas.nativeCanvas, annotation, t.imageToViewMatrix(), strokeRenderer)
         is Annotation.Circle -> rect(annotation.bounds).let { (o, s) -> drawOval(Color(annotation.color), o, s, style = stroke) }
         is Annotation.Redaction -> rect(annotation.bounds).let { (o, s) -> drawRect(Color.Black, o, s) }
         is Annotation.Arrow -> drawLine(

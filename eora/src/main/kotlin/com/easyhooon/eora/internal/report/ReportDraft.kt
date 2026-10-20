@@ -1,13 +1,27 @@
 package com.easyhooon.eora.internal.report
 
 import com.easyhooon.eora.ArtifactUploadResult
+import com.easyhooon.eora.IssueCreateResult
 import com.easyhooon.eora.IssueRef
 import com.easyhooon.eora.RejectReason
 import com.easyhooon.eora.internal.metadata.MetadataEntry
 import com.easyhooon.eora.internal.metadata.ReproDescription
 import java.security.MessageDigest
 
+/** [METADATA] only appears in drafts saved before the report text became the issue description. */
 internal enum class ArtifactKind { SCREENSHOT, MEDIA, METADATA }
+
+/** The new issue for this report. Files are attached only after it is [Created]. */
+internal sealed interface IssueStatus {
+    data object NotCreated : IssueStatus
+
+    /** Persisted while the request is in flight; a draft loaded in this state becomes [Unknown]. */
+    data object Creating : IssueStatus
+    data class Created(val issue: IssueRef, val confirmedByUser: Boolean = false) : IssueStatus
+    data class Rejected(val reason: RejectReason, val message: String?) : IssueStatus
+    data class Failed(val message: String?) : IssueStatus
+    data class Unknown(val message: String?) : IssueStatus
+}
 
 internal sealed interface ArtifactStatus {
     data object Pending : ArtifactStatus
@@ -36,7 +50,7 @@ internal data class DraftAttachment(
 )
 
 internal enum class ReportStatus {
-    /** Missing a target issue or files. */
+    /** Missing a title or files. */
     DRAFT,
 
     /** Complete, waiting for the user to approve exactly what will be sent. */
@@ -47,28 +61,29 @@ internal enum class ReportStatus {
     PARTIALLY_SUCCEEDED,
     FAILED,
 
-    /** At least one file may or may not have arrived; the user has to check before anything is retried. */
+    /** The issue or a file may or may not have arrived; the user has to check before anything is retried. */
     NEEDS_CONFIRMATION,
     CANCELLED,
 }
 
 internal sealed class DraftError(message: String) : IllegalStateException(message) {
     class Locked : DraftError("Files were already sent; this report can no longer be edited.")
-    class NotReviewable : DraftError("Choose an issue and add at least one file first.")
+    class NotReviewable : DraftError("Enter a title and add at least one file first.")
     class NotApproved : DraftError("Review and approve the report before sending.")
     class Cancelled : DraftError("This report was cancelled.")
     class UnknownArtifact(id: String) : DraftError("No attachment $id in this report.")
+    class IssueNotCreated : DraftError("The issue has not been created yet.")
 }
 
 /**
- * A report and its transfer state. Every edit bumps [revision] and so invalidates an earlier approval: approval
- * is bound to a fingerprint of what is sent, not to a flag.
+ * A report and its transfer state: first one new issue, then its files. Every edit bumps [revision] and so
+ * invalidates an earlier approval: approval is bound to a fingerprint of what is sent, not to a flag.
  */
 internal data class ReportDraft(
     val reportId: String,
     val createdAtMs: Long,
     val revision: Int = 1,
-    val targetIssue: IssueRef? = null,
+    val issue: IssueStatus = IssueStatus.NotCreated,
     val description: ReproDescription = ReproDescription(),
     val metadata: List<MetadataEntry> = emptyList(),
     val attachments: List<DraftAttachment> = emptyList(),
@@ -77,16 +92,34 @@ internal data class ReportDraft(
 ) {
     val isApproved: Boolean get() = approvedFingerprint != null && approvedFingerprint == fingerprint()
 
-    /** True once any file left (or may have left) the device. From then on the content is frozen. */
-    val hasTransferStarted: Boolean get() = attachments.any { it.status != ArtifactStatus.Pending }
+    val createdIssue: IssueRef? get() = (issue as? IssueStatus.Created)?.issue
 
-    val isReviewable: Boolean get() = targetIssue != null && attachments.isNotEmpty()
+    /**
+     * True once the issue or any file reached (or may have reached) the tracker. From then on the content is frozen.
+     * A creation that certainly failed or was refused created nothing, so the user may still fix and resend.
+     */
+    val hasTransferStarted: Boolean
+        get() = when (issue) {
+            IssueStatus.NotCreated, is IssueStatus.Failed, is IssueStatus.Rejected -> false
+            else -> true
+        } || attachments.any { it.status != ArtifactStatus.Pending }
+
+    val isReviewable: Boolean get() = description.hasTitle && attachments.isNotEmpty()
+
+    /** Whether a user-started send would do anything: create the issue, or upload files still missing from it. */
+    val canSend: Boolean
+        get() = !cancelled && isApproved && when (issue) {
+            IssueStatus.NotCreated, is IssueStatus.Failed -> true
+            is IssueStatus.Created -> sendableAttachments().isNotEmpty()
+            else -> false
+        }
 
     val status: ReportStatus
         get() {
             if (cancelled) return ReportStatus.CANCELLED
             val statuses = attachments.map { it.status }
-            if (statuses.any { it is ArtifactStatus.Uploading }) return ReportStatus.SENDING
+            if (issue == IssueStatus.Creating || statuses.any { it is ArtifactStatus.Uploading }) return ReportStatus.SENDING
+            if (issue is IssueStatus.Failed || issue is IssueStatus.Rejected) return ReportStatus.FAILED
             if (!hasTransferStarted) {
                 return when {
                     !isReviewable -> ReportStatus.DRAFT
@@ -94,13 +127,12 @@ internal data class ReportDraft(
                     else -> ReportStatus.REVIEWABLE
                 }
             }
-            if (statuses.any { it is ArtifactStatus.Unknown }) return ReportStatus.NEEDS_CONFIRMATION
+            if (issue is IssueStatus.Unknown || statuses.any { it is ArtifactStatus.Unknown }) return ReportStatus.NEEDS_CONFIRMATION
+            // Without an issue nothing reached the tracker.
+            if (issue !is IssueStatus.Created) return ReportStatus.FAILED
             val uploaded = statuses.count { it is ArtifactStatus.Uploaded }
-            return when (uploaded) {
-                statuses.size -> ReportStatus.SUCCEEDED
-                0 -> ReportStatus.FAILED
-                else -> ReportStatus.PARTIALLY_SUCCEEDED
-            }
+            // The issue exists, so anything short of every file is a partial success.
+            return if (uploaded == statuses.size) ReportStatus.SUCCEEDED else ReportStatus.PARTIALLY_SUCCEEDED
         }
 
     /** Applies a content change. Fails once transfer started, so the same revision never means two contents. */
@@ -113,6 +145,7 @@ internal data class ReportDraft(
             createdAtMs = createdAtMs,
             revision = revision + 1,
             approvedFingerprint = null,
+            issue = IssueStatus.NotCreated,
             attachments = changed.attachments.map { it.copy(status = ArtifactStatus.Pending) },
         )
     }
@@ -128,8 +161,36 @@ internal data class ReportDraft(
      * refused again, unknown ones because the user has to check them first, uploaded ones so nothing is attached twice.
      */
     fun sendableAttachments(): List<DraftAttachment> {
-        if (cancelled || !isApproved) return emptyList()
+        if (cancelled || !isApproved || issue !is IssueStatus.Created) return emptyList()
         return attachments.filter { it.status is ArtifactStatus.Pending || it.status is ArtifactStatus.Failed }
+    }
+
+    fun markCreating(): ReportDraft = copy(issue = IssueStatus.Creating)
+
+    fun applyCreateResult(result: IssueCreateResult): ReportDraft = copy(
+        issue = when (result) {
+            is IssueCreateResult.Created -> IssueStatus.Created(result.issue)
+            is IssueCreateResult.Rejected -> IssueStatus.Rejected(result.reason, result.message)
+            is IssueCreateResult.Failed -> IssueStatus.Failed(result.message)
+            is IssueCreateResult.Unknown -> IssueStatus.Unknown(result.message)
+        },
+    )
+
+    /**
+     * The user checked the tracker by hand. [createdKey] is the key of the issue they found, or null if it does not
+     * exist; only then may creation be retried.
+     */
+    fun resolveUnknownIssue(createdKey: String?): ReportDraft {
+        check(issue is IssueStatus.Unknown) { "The issue is not waiting for confirmation." }
+        // Files go to whatever key is entered, so accept only something shaped like an issue key.
+        check(createdKey == null || ISSUE_KEY.matches(createdKey.trim())) { "Not an issue key: $createdKey" }
+        return copy(
+            issue = if (createdKey.isNullOrBlank()) {
+                IssueStatus.Failed("Confirmed not created")
+            } else {
+                IssueStatus.Created(IssueRef(createdKey.trim()), confirmedByUser = true)
+            },
+        )
     }
 
     fun markUploading(artifactId: String): ReportDraft = updateStatus(artifactId) { ArtifactStatus.Uploading }
@@ -151,6 +212,7 @@ internal data class ReportDraft(
 
     /** After a crash or process death nobody knows whether in-flight files arrived. */
     fun recoverInterruptedTransfer(): ReportDraft = copy(
+        issue = if (issue == IssueStatus.Creating) IssueStatus.Unknown("Interrupted before a response") else issue,
         attachments = attachments.map {
             if (it.status is ArtifactStatus.Uploading) it.copy(status = ArtifactStatus.Unknown("Interrupted before a response")) else it
         },
@@ -166,9 +228,12 @@ internal data class ReportDraft(
     internal fun fingerprint(): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val content = buildString {
-            append(reportId).append('|').append(revision).append('|').append(targetIssue?.key.orEmpty())
+            // The revision covers the title, description and metadata, which are sent as the issue text.
+            append(reportId).append('|').append(revision)
             attachments.sortedBy { it.artifactId }.forEach { append('|').append(it.artifactId).append(':').append(it.sha256) }
         }
         return digest.digest(content.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 }
+
+private val ISSUE_KEY = Regex("^[A-Z][A-Z0-9_]+-[0-9]+$")

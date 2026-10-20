@@ -23,14 +23,12 @@ import kotlin.math.sin
 internal object AnnotationRenderer {
     const val HIGHLIGHTER_COLOR = 0x66FFD600
 
-    /** Created on first use so code paths without Ink strokes never load Ink's native library. */
-    val strokeRenderer: CanvasStrokeRenderer by lazy { CanvasStrokeRenderer.create() }
 
     /**
      * Draws an Ink stroke stored in image coordinates. Highlighters use a translucent color instead of a multiply
      * layer: PorterDuff MULTIPLY also multiplies the layer's transparent pixels and would erase the whole capture.
      */
-    fun drawInk(canvas: Canvas, ink: Annotation.InkStroke, imageToCanvas: Matrix) {
+    fun drawInk(canvas: Canvas, ink: Annotation.InkStroke, imageToCanvas: Matrix, strokeRenderer: CanvasStrokeRenderer) {
         // The renderer only uses the matrix to pick rendering quality; the canvas itself must carry the transform.
         val saved = canvas.save()
         canvas.concat(imageToCanvas)
@@ -39,6 +37,9 @@ internal object AnnotationRenderer {
     }
 
     fun render(source: Bitmap, annotations: List<Annotation>): Bitmap {
+        // Its own renderer: the editor draws its preview with another one on the main thread at the same time.
+        // Created only when needed so paths without Ink strokes never load Ink's native library.
+        val strokeRenderer by lazy { CanvasStrokeRenderer.create() }
         val out = source.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(out)
         val unit = max(2f, min(out.width, out.height) / 180f)
@@ -48,7 +49,9 @@ internal object AnnotationRenderer {
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
-        annotations.filterNot { it is Annotation.Redaction }.forEach { drawAnnotation(canvas, it, stroke, unit) }
+        annotations.filterNot { it is Annotation.Redaction }.forEach {
+            if (it is Annotation.InkStroke) drawInk(canvas, it, Matrix(), strokeRenderer) else drawAnnotation(canvas, it, stroke, unit)
+        }
         val opaque = Paint().apply {
             color = Color.BLACK
             style = Paint.Style.FILL
@@ -67,7 +70,7 @@ internal object AnnotationRenderer {
             is Annotation.Circle -> canvas.drawOval(annotation.bounds.toRectF(), stroke.apply { color = annotation.color })
             is Annotation.Arrow -> drawArrow(canvas, annotation, stroke.apply { color = annotation.color }, unit)
             is Annotation.Text -> drawText(canvas, annotation, unit)
-            is Annotation.InkStroke -> drawInk(canvas, annotation, Matrix())
+            is Annotation.InkStroke -> Unit
             is Annotation.Redaction -> Unit
         }
     }

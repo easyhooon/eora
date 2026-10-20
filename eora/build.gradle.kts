@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.easyhooon.eora"
     compileSdk = 36
+    resourcePrefix = "eora_"
 
     defaultConfig {
         minSdk = 26

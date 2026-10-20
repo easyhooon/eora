@@ -25,6 +25,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,7 +44,11 @@ internal class EoraRuntime private constructor(
     val config: EoraConfig,
 ) : Application.ActivityLifecycleCallbacks {
     /** Outlives activities, so rotating the report screen never cancels an upload. */
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate +
+            // A failure in one report must never crash the host app it is testing.
+            CoroutineExceptionHandler { _, e -> Log.e(TAG, "Unexpected error in Eora", e) },
+    )
     val appContext: Context get() = app
     val store = DraftStore(File(app.noBackupFilesDir, "eora/drafts"), config.storage)
     private val prefs = app.getSharedPreferences("eora", Context.MODE_PRIVATE)
@@ -72,59 +77,81 @@ internal class EoraRuntime private constructor(
             return
         }
         reportInProgress = true
-        val decor = activity.window.peekDecorView()
-        val expectedBytes = (decor?.width ?: 0).toLong() * (decor?.height ?: 0) * 2
-        val draft = when (val created = store.create(expectedBytes)) {
-            is DraftStore.CreateResult.Created -> created.draft
-            is DraftStore.CreateResult.Refused -> {
-                reportInProgress = false
-                toast(capacityMessage(created.decision))
-                return
+        var draftId: String? = null
+        try {
+            val decor = activity.window.peekDecorView()
+            val expectedBytes = (decor?.width ?: 0).toLong() * (decor?.height ?: 0) * 2
+            val draft = when (val created = store.create(expectedBytes)) {
+                is DraftStore.CreateResult.Created -> created.draft.also { draftId = it.reportId }
+                is DraftStore.CreateResult.Refused -> {
+                    reportInProgress = false
+                    toast(capacityMessage(created.decision))
+                    return
+                }
             }
-        }
-        // Collected now so the values describe the captured screen, not whatever is shown later.
-        val metadata = MetadataCollector.collect(
-            reportId = draft.reportId,
-            createdAtIso = isoUtc(draft.createdAtMs),
-            environmentLabel = config.environmentLabel,
-            device = deviceFacts(),
-            screenIdentifier = runCatching { config.screenIdentifierProvider.screenIdentifier(activity) }.getOrNull(),
-            customFields = runCatching { config.metadataProvider.customFields() }.getOrDefault(emptyMap()),
-            allowedCustomKeys = config.allowedCustomKeys,
-            deviceMarketingNames = config.deviceMarketingNames,
-        )
-        store.save(draft.copy(metadata = metadata))
+            // Collected now so the values describe the captured screen, not whatever is shown later.
+            val metadata = MetadataCollector.collect(
+                reportId = draft.reportId,
+                createdAtIso = isoUtc(draft.createdAtMs),
+                environmentLabel = config.environmentLabel,
+                device = deviceFacts(),
+                screenIdentifier = runCatching { config.screenIdentifierProvider.screenIdentifier(activity) }.getOrNull(),
+                customFields = runCatching { config.metadataProvider.customFields() }.getOrDefault(emptyMap()),
+                allowedCustomKeys = config.allowedCustomKeys,
+                deviceMarketingNames = config.deviceMarketingNames,
+            )
+            store.save(draft.copy(metadata = metadata))
 
-        ScreenCapturer.capture(activity) { result ->
-            when (result) {
-                is CaptureResult.Success -> scope.launch {
-                    val written = withContext(Dispatchers.IO) {
-                        runCatching { store.originalCaptureFile(draft.reportId).outputStream().use { result.bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
-                            .getOrDefault(false)
+            ScreenCapturer.capture(activity) { result ->
+                when (result) {
+                    is CaptureResult.Success -> scope.launch {
+                        try {
+                            val written = withContext(Dispatchers.IO) {
+                                runCatching { store.originalCaptureFile(draft.reportId).outputStream().use { result.bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
+                                    .getOrDefault(false)
+                            }
+                            // The capture is only valid if the very same screen is still in front.
+                            if (!written || resumedHost?.get() !== activity || activity.isFinishing) {
+                                result.bitmap.recycle()
+                                abandon(draft.reportId, app.getString(R.string.eora_screen_changed))
+                                return@launch
+                            }
+                            controllers[draft.reportId] = ReportController(this@EoraRuntime, draft.reportId, result.bitmap)
+                            activity.startActivity(
+                                EoraReportActivity.reportIntent(
+                                    activity,
+                                    draft.reportId,
+                                    openMenu = fromShake,
+                                    showShakeNotice = fromShake && !isShakeNoticeAcknowledged,
+                                ),
+                            )
+                        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                            controllers.remove(draft.reportId)
+                            result.bitmap.recycle()
+                            failCapture(draft.reportId, e)
+                        }
                     }
-                    // The capture is only valid if the very same screen is still in front.
-                    if (!written || resumedHost?.get() !== activity || activity.isFinishing) {
-                        result.bitmap.recycle()
-                        abandon(draft.reportId, app.getString(R.string.eora_screen_changed))
-                        return@launch
+                    CaptureResult.Protected -> abandon(draft.reportId, app.getString(R.string.eora_screen_protected))
+                    is CaptureResult.Failed -> {
+                        Log.w(TAG, "Capture failed: ${result.reason}")
+                        abandon(draft.reportId, app.getString(R.string.eora_capture_failed))
                     }
-                    controllers[draft.reportId] = ReportController(this@EoraRuntime, draft.reportId, result.bitmap)
-                    activity.startActivity(
-                        EoraReportActivity.reportIntent(
-                            activity,
-                            draft.reportId,
-                            openMenu = fromShake,
-                            showShakeNotice = fromShake && !isShakeNoticeAcknowledged,
-                        ),
-                    )
-                }
-                CaptureResult.Protected -> abandon(draft.reportId, app.getString(R.string.eora_screen_protected))
-                is CaptureResult.Failed -> {
-                    Log.w(TAG, "Capture failed: ${result.reason}")
-                    abandon(draft.reportId, app.getString(R.string.eora_capture_failed))
                 }
             }
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            failCapture(draftId, e)
+        } catch (e: OutOfMemoryError) {
+            // A full-screen ARGB bitmap can fail to allocate on low-memory devices.
+            failCapture(draftId, e)
         }
+    }
+
+    /** Frees the single-report lock and the half-made draft when starting a report fails. */
+    private fun failCapture(draftId: String?, error: Throwable) {
+        Log.w(TAG, "Could not start a report", error)
+        draftId?.let { runCatching { store.delete(it) } }
+        reportInProgress = false
+        toast(app.getString(R.string.eora_capture_failed))
     }
 
     fun openDrafts() {
@@ -137,6 +164,8 @@ internal class EoraRuntime private constructor(
     /** Returns the controller for a report, rebuilding it from disk after process death. */
     fun controllerFor(reportId: String): ReportController? =
         controllers[reportId] ?: store.load(reportId)?.let { ReportController(this, it.reportId, null) }?.also { controllers[reportId] = it }
+
+    fun isSending(reportId: String): Boolean = controllers[reportId]?.isSending == true
 
     fun forgetController(reportId: String) {
         controllers.remove(reportId)?.release()
@@ -182,8 +211,11 @@ internal class EoraRuntime private constructor(
     }
 
     override fun onActivityPaused(activity: Activity) {
-        if (resumedHost?.get() === activity) resumedHost = null
-        shakeSensor.stop()
+        // In multi-window another host activity may still be resumed; only stop for the one we were tracking.
+        if (resumedHost?.get() === activity) {
+            resumedHost = null
+            shakeSensor.stop()
+        }
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit

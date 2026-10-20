@@ -7,6 +7,7 @@ import com.easyhooon.eora.internal.metadata.ReproDescription
 import com.easyhooon.eora.internal.report.ArtifactKind
 import com.easyhooon.eora.internal.report.ArtifactStatus
 import com.easyhooon.eora.internal.report.DraftAttachment
+import com.easyhooon.eora.internal.report.IssueStatus
 import com.easyhooon.eora.internal.report.ReportDraft
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,9 +20,7 @@ internal object DraftJson {
         put("reportId", draft.reportId)
         put("createdAtMs", draft.createdAtMs)
         put("revision", draft.revision)
-        draft.targetIssue?.let { issue ->
-            put("targetIssue", JSONObject().put("key", issue.key).putOpt("title", issue.title).putOpt("project", issue.project))
-        }
+        put("issue", encodeIssue(draft.issue))
         put(
             "description",
             draft.description.let {
@@ -42,9 +41,7 @@ internal object DraftJson {
             reportId = o.getString("reportId"),
             createdAtMs = o.getLong("createdAtMs"),
             revision = o.getInt("revision"),
-            targetIssue = o.optJSONObject("targetIssue")?.let {
-                IssueRef(it.getString("key"), it.optStringOrNull("title"), it.optStringOrNull("project"))
-            },
+            issue = o.optJSONObject("issue")?.let(::decodeIssue) ?: IssueStatus.NotCreated,
             description = ReproDescription(
                 title = description.optString("title"),
                 preconditions = description.optString("preconditions"),
@@ -59,6 +56,34 @@ internal object DraftJson {
             approvedFingerprint = o.optStringOrNull("approvedFingerprint"),
             cancelled = o.getBoolean("cancelled"),
         )
+    }
+
+    private fun encodeIssue(issue: IssueStatus) = JSONObject().apply {
+        when (issue) {
+            IssueStatus.NotCreated -> put("type", "not_created")
+            IssueStatus.Creating -> put("type", "creating")
+            is IssueStatus.Created -> put("type", "created").put("key", issue.issue.key).putOpt("title", issue.issue.title)
+                .putOpt("project", issue.issue.project).put("confirmedByUser", issue.confirmedByUser)
+            is IssueStatus.Rejected -> put("type", "rejected").put("reason", issue.reason.name).putOpt("message", issue.message)
+            is IssueStatus.Failed -> put("type", "failed").putOpt("message", issue.message)
+            is IssueStatus.Unknown -> put("type", "unknown").putOpt("message", issue.message)
+        }
+    }
+
+    private fun decodeIssue(o: JSONObject): IssueStatus {
+        val message = o.optStringOrNull("message")
+        return when (o.getString("type")) {
+            "not_created" -> IssueStatus.NotCreated
+            "creating" -> IssueStatus.Creating
+            "created" -> IssueStatus.Created(
+                IssueRef(o.getString("key"), o.optStringOrNull("title"), o.optStringOrNull("project")),
+                o.optBoolean("confirmedByUser"),
+            )
+            "rejected" -> IssueStatus.Rejected(reasonOf(o.getString("reason")), message)
+            "failed" -> IssueStatus.Failed(message)
+            // Anything unreadable is treated as possibly created, never as safe to create again.
+            else -> IssueStatus.Unknown(message)
+        }
     }
 
     private fun encodeAttachment(a: DraftAttachment) = JSONObject().apply {
@@ -92,7 +117,7 @@ internal object DraftJson {
             "pending" -> ArtifactStatus.Pending
             "uploading" -> ArtifactStatus.Uploading
             "uploaded" -> ArtifactStatus.Uploaded(s.optStringOrNull("remoteId"), s.optBoolean("confirmedByUser"))
-            "rejected" -> ArtifactStatus.Rejected(RejectReason.valueOf(s.getString("reason")), message)
+            "rejected" -> ArtifactStatus.Rejected(reasonOf(s.getString("reason")), message)
             "failed" -> ArtifactStatus.Failed(message)
             // Anything unreadable is treated as possibly sent, never as safe to resend.
             else -> ArtifactStatus.Unknown(message)
@@ -107,6 +132,9 @@ internal object DraftJson {
             status = status,
         )
     }
+
+    /** A reason from a newer or older version is still a refusal; never let it make the draft unreadable. */
+    private fun reasonOf(name: String) = runCatching { RejectReason.valueOf(name) }.getOrDefault(RejectReason.OTHER)
 
     private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 

@@ -17,8 +17,8 @@ tasks.register<Exec>("checkReleaseLeak") {
     commandLine("bash", "scripts/check-release-leak.sh")
 }
 
-// Shared POM for every published module. License is intentionally missing until it is chosen (docs/OPEN_QUESTIONS.md #4),
-// so only publishToMavenLocal is expected to work for now; Maven Central rejects a POM without a license.
+// Shared POM and Maven Central setup for every published module. Signing and Central credentials come from
+// ~/.gradle/gradle.properties (signingInMemoryKey*, mavenCentralUsername/Password), never from this repository.
 subprojects {
     plugins.withId("com.vanniktech.maven.publish") {
         extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
@@ -32,6 +32,12 @@ subprojects {
                 description.set("Shake-to-report QA evidence library for STG Android apps")
                 inceptionYear.set("2026")
                 url.set("https://github.com/easyhooon/eora")
+                licenses {
+                    license {
+                        name.set("The Apache Software License, Version 2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                    }
+                }
                 developers {
                     developer {
                         id.set("easyhooon")
@@ -45,6 +51,11 @@ subprojects {
                     developerConnection.set("scm:git:ssh://git@github.com/easyhooon/eora.git")
                 }
             }
+
+            // Manual release: uploads stay in the Central Portal until someone presses Publish there, because a
+            // published version can never be removed.
+            publishToMavenCentral(automaticRelease = false)
+            signAllPublications()
         }
     }
 }

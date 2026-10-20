@@ -29,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,6 +47,7 @@ import com.easyhooon.eora.internal.metadata.ReproDescription
 import com.easyhooon.eora.internal.report.ArtifactKind
 import com.easyhooon.eora.internal.report.ArtifactStatus
 import com.easyhooon.eora.internal.report.DraftAttachment
+import com.easyhooon.eora.internal.report.IssueStatus
 import com.easyhooon.eora.internal.report.ReportStatus
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -126,7 +128,7 @@ internal fun DetailsScreen(controller: ReportController, modifier: Modifier, onB
                 return@Button
             }
             controller.updateDescription(description)
-            controller.prepareReview(onNext)
+            onNext()
         },
         enabled = !busy,
         modifier = Modifier
@@ -140,9 +142,8 @@ internal fun DetailsScreen(controller: ReportController, modifier: Modifier, onB
 @Composable
 internal fun ReviewScreen(controller: ReportController, modifier: Modifier, onBack: () -> Unit, onSent: () -> Unit) {
     val draft by controller.draft.collectAsState()
-    val lookup by controller.issueLookup.collectAsState()
     val current = draft ?: return
-    var issueKey by rememberSaveable { mutableStateOf(current.targetIssue?.key.orEmpty()) }
+    val issueText = remember(current.revision) { controller.issueText(current) }
 
     Column(modifier) {
     EoraHeader(stringResource(R.string.eora_step_review), STEP_REVIEW, onBack)
@@ -154,25 +155,14 @@ internal fun ReviewScreen(controller: ReportController, modifier: Modifier, onBa
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(stringResource(R.string.eora_destination, controller.uploaderName), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.eora_creates_issue), style = MaterialTheme.typography.bodySmall)
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(issueKey, { issueKey = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.eora_issue_key)) }, singleLine = true)
-            OutlinedButton(onClick = { controller.lookupIssue(issueKey) }, enabled = lookup != IssueLookupState.Loading) { Text(stringResource(R.string.eora_find)) }
+        Text(stringResource(R.string.eora_issue_title_label), style = MaterialTheme.typography.titleMedium)
+        Text(current.description.title, style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(R.string.eora_issue_body_label), style = MaterialTheme.typography.titleMedium)
+        Card(Modifier.fillMaxWidth()) {
+            Text(issueText, Modifier.padding(12.dp), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
         }
-        when (val state = lookup) {
-            IssueLookupState.Loading -> CircularProgressIndicator()
-            is IssueLookupState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error)
-            IssueLookupState.Idle -> current.targetIssue?.let { issue ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(issue.key, style = MaterialTheme.typography.titleMedium)
-                        issue.title?.let { Text(it) }
-                        issue.project?.let { Text(stringResource(R.string.eora_project, it), style = MaterialTheme.typography.bodySmall) }
-                    }
-                }
-            }
-        }
-        Text(stringResource(R.string.eora_append_only), style = MaterialTheme.typography.bodySmall)
 
         HorizontalDivider()
         Text(stringResource(R.string.eora_exact_files), style = MaterialTheme.typography.titleMedium)
@@ -187,15 +177,18 @@ internal fun ReviewScreen(controller: ReportController, modifier: Modifier, onBa
             )
             Text(stringResource(R.string.eora_approve))
         }
-        Button(
-            onClick = {
-                controller.send()
-                onSent()
-            },
-            enabled = current.isApproved,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(stringResource(R.string.eora_send_files, current.attachments.size, current.targetIssue?.key ?: stringResource(R.string.eora_issue_placeholder))) }
     }
+    Button(
+        onClick = {
+            controller.send()
+            onSent()
+        },
+        enabled = current.isApproved,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(52.dp),
+    ) { Text(stringResource(R.string.eora_create_and_attach, current.attachments.size)) }
     }
 }
 
@@ -236,7 +229,7 @@ private fun rememberDecodedImage(file: File): ImageBitmap? = produceState<ImageB
 private const val PREVIEW_MAX_PX = 1080
 
 @Composable
-internal fun ResultScreen(controller: ReportController, modifier: Modifier, onDone: () -> Unit, onDeleted: () -> Unit) {
+internal fun ResultScreen(controller: ReportController, modifier: Modifier, onEdit: () -> Unit, onDone: () -> Unit, onDeleted: () -> Unit) {
     val draft by controller.draft.collectAsState()
     val current = draft ?: return
     val status = current.status
@@ -248,10 +241,10 @@ internal fun ResultScreen(controller: ReportController, modifier: Modifier, onDo
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(stringResource(statusLabel(status)), style = MaterialTheme.typography.titleLarge)
-        current.targetIssue?.let { Text(stringResource(R.string.eora_issue_line, it.key)) }
         if (status == ReportStatus.NEEDS_CONFIRMATION) {
             Text(stringResource(R.string.eora_needs_confirmation_help), style = MaterialTheme.typography.bodyMedium)
         }
+        IssueCard(controller, current.issue)
         current.attachments.forEach { attachment ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
@@ -266,9 +259,19 @@ internal fun ResultScreen(controller: ReportController, modifier: Modifier, onDo
                 }
             }
         }
-        if (current.sendableAttachments().isNotEmpty() && status != ReportStatus.SENDING) {
+        // Nothing reached the tracker (creation failed or was refused), so the user may fix the report and send again.
+        if (!current.hasTransferStarted && status == ReportStatus.FAILED) {
+            OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.eora_edit_report)) }
+        }
+        if (current.canSend && status != ReportStatus.SENDING) {
             Button(onClick = controller::send, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.eora_send_remaining, current.sendableAttachments().size))
+                Text(
+                    if (current.createdIssue == null) {
+                        stringResource(R.string.eora_retry_create)
+                    } else {
+                        stringResource(R.string.eora_send_remaining, current.sendableAttachments().size)
+                    },
+                )
             }
         }
         if (status != ReportStatus.SENDING) {
@@ -281,6 +284,42 @@ internal fun ResultScreen(controller: ReportController, modifier: Modifier, onDo
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.eora_delete_draft)) }
             Text(stringResource(R.string.eora_delete_note), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun IssueCard(controller: ReportController, issue: IssueStatus) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            when (issue) {
+                is IssueStatus.Created -> {
+                    Text(issue.issue.key, style = MaterialTheme.typography.titleMedium)
+                    issue.issue.title?.let { Text(it) }
+                    Text(
+                        stringResource(if (issue.confirmedByUser) R.string.eora_issue_created_confirmed else R.string.eora_issue_created),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                IssueStatus.NotCreated -> Text(stringResource(R.string.eora_issue_not_created))
+                IssueStatus.Creating -> Text(stringResource(R.string.eora_issue_creating))
+                is IssueStatus.Rejected -> Text(
+                    stringResource(R.string.eora_issue_rejected, stringResource(rejectLabel(issue.reason))) + (issue.message?.let { " ($it)" } ?: ""),
+                    color = MaterialTheme.colorScheme.error,
+                )
+                is IssueStatus.Failed -> Text(stringResource(R.string.eora_issue_failed) + (issue.message?.let { " ($it)" } ?: ""))
+                is IssueStatus.Unknown -> {
+                    Text(stringResource(R.string.eora_issue_unknown) + (issue.message?.let { " ($it)" } ?: ""))
+                    var key by rememberSaveable { mutableStateOf("") }
+                    OutlinedTextField(key, { key = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.eora_found_issue_key)) }, singleLine = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { controller.resolveUnknownIssue(key) }, enabled = key.isNotBlank()) {
+                            Text(stringResource(R.string.eora_issue_exists))
+                        }
+                        OutlinedButton(onClick = { controller.resolveUnknownIssue(null) }) { Text(stringResource(R.string.eora_issue_missing)) }
+                    }
+                }
+            }
         }
     }
 }
@@ -320,6 +359,7 @@ private fun artifactStatusLabel(status: ArtifactStatus): String {
 private fun rejectLabel(reason: RejectReason): Int = when (reason) {
     RejectReason.ISSUE_NOT_FOUND -> R.string.eora_reject_not_found
     RejectReason.PERMISSION_DENIED -> R.string.eora_reject_permission
+    RejectReason.INVALID_FIELDS -> R.string.eora_reject_invalid_fields
     RejectReason.TOO_LARGE -> R.string.eora_reject_too_large
     RejectReason.UNSUPPORTED_TYPE -> R.string.eora_reject_type
     RejectReason.CONFLICT -> R.string.eora_reject_conflict

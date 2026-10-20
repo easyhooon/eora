@@ -78,8 +78,13 @@ internal class DraftStore(
     fun deleteExpired(): Int {
         val expired = policy.expired(infos(), clock())
         expired.forEach { delete(it.reportId) }
-        // Directories without a readable draft.json (e.g. a crash during create) are leftovers too.
-        root.listFiles()?.filter { it.isDirectory && !File(it, DRAFT_FILE).isFile }?.forEach { it.deleteRecursively() }
+        // Directories without a readable draft.json (a crash during create, a corrupt file) can hold an unredacted
+        // capture, so they get the same TTL, measured from the directory's last change.
+        val readable = infos().map { it.reportId }.toSet()
+        root.listFiles()
+            ?.filter { it.isDirectory && it.name !in readable }
+            ?.filter { !File(it, DRAFT_FILE).isFile || clock() - it.lastModified() >= ttlMs }
+            ?.forEach { it.deleteRecursively() }
         return expired.size
     }
 
@@ -95,7 +100,8 @@ internal class DraftStore(
      * Copies [source] into the draft as a final artifact, enforcing the per-file limit while copying, because the
      * size a content provider reports in advance can be wrong.
      */
-    @Synchronized
+    // Not synchronized: it writes a new, uniquely named file, and holding the lock during a 50 MB copy would block
+    // saves from the main thread.
     fun writeArtifact(reportId: String, kind: ArtifactKind, mimeType: String, extension: String, source: InputStream): DraftAttachment {
         val artifactId = UUID.randomUUID().toString()
         val dir = File(dirOf(reportId), ARTIFACTS_DIR).apply { mkdirs() }
