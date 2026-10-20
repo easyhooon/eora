@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="eora_menu_record">Record the screen</string>
+    <string name="eora_recording_channel">Eora screen recording</string>
+    <string name="eora_recording_title">Eora is recording the screen</string>
+    <string name="eora_recording_text">Shake the device or tap Stop to finish.</string>
+    <string name="eora_recording_stop">Stop</string>
+    <string name="eora_recording_started">Recording. Reproduce the bug, then shake again to stop (max 60 s).</string>
+    <string name="eora_recording_saved">Recording saved as a draft. Open Eora drafts to send it.</string>
+    <string name="eora_recording_failed">Eora: the recording could not be saved.</string>
+</resources>
